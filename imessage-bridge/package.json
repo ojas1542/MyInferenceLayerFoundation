@@ -1,0 +1,20 @@
+{
+  "name": "imessage-bridge",
+  "private": true,
+  "description": "Relays iMessages between Photon and the personal agent's imessage channel.",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node --env-file=../personal-agent/.env bridge.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "spectrum-ts": "12.10.1"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.1",
+    "typescript": "6.0.3"
+  }
+}

@@ -1,0 +1,224 @@
+@import "tailwindcss";
+
+/*
+ * Earthy green ground with pastel surfaces. Dark ink is used on every
+ * pastel surface and cream text on the green, both above 4.5:1 contrast.
+ */
+@theme {
+  --color-moss: #4e6045;
+  --color-moss-deep: #415238;
+  --color-moss-line: #62765a;
+  --color-moss-hover: #576b4d;
+  --color-cream: #f6f2e7;
+  --color-cream-muted: #d5dfcb;
+  --color-ink: #2b3326;
+  --color-ink-muted: #5a6552;
+
+  --color-sage: #e8eedd;
+  --color-sage-deep: #d6e0c8;
+  --color-peach: #f7dac6;
+  --color-lavender: #e4ddf1;
+  --color-mint: #cfe9d4;
+  --color-mint-deep: #b7dcc0;
+  --color-butter: #f5ebb8;
+  --color-sky: #d5e6f3;
+  --color-rose: #f5d3d3;
+
+  /* Deeper pastels for meters, visible on cream surfaces. */
+  --color-leaf: #7fb98d;
+  --color-honey: #d9b84a;
+  --color-clay: #d98a8a;
+
+  --color-code: #2f3a2a;
+
+  --font-sans: var(--font-nunito), ui-rounded, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
+}
+
+html,
+body {
+  height: 100%;
+  background: var(--color-moss);
+  color: var(--color-cream);
+}
+
+::selection {
+  background: var(--color-lavender);
+  color: var(--color-ink);
+}
+
+/* Markdown inside assistant messages, which sit on a sage card. */
+.prose-chat {
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+.prose-chat > :first-child {
+  margin-top: 0;
+}
+.prose-chat > :last-child {
+  margin-bottom: 0;
+}
+.prose-chat p,
+.prose-chat ul,
+.prose-chat ol,
+.prose-chat blockquote,
+.prose-chat table {
+  margin: 0.75em 0;
+}
+.prose-chat ul {
+  list-style: disc;
+  padding-left: 1.4em;
+}
+.prose-chat ol {
+  list-style: decimal;
+  padding-left: 1.4em;
+}
+.prose-chat li {
+  margin: 0.25em 0;
+}
+.prose-chat li::marker {
+  color: var(--color-ink-muted);
+}
+.prose-chat h1,
+.prose-chat h2,
+.prose-chat h3,
+.prose-chat h4 {
+  font-weight: 700;
+  line-height: 1.3;
+  margin: 1.1em 0 0.5em;
+}
+.prose-chat h1 {
+  font-size: 1.4em;
+}
+.prose-chat h2 {
+  font-size: 1.25em;
+}
+.prose-chat h3 {
+  font-size: 1.1em;
+}
+.prose-chat a {
+  color: #3d6b8f;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.prose-chat strong {
+  font-weight: 700;
+}
+.prose-chat blockquote {
+  border-left: 3px solid var(--color-mint-deep);
+  padding-left: 0.9em;
+  color: var(--color-ink-muted);
+}
+.prose-chat hr {
+  border: 0;
+  border-top: 1px solid var(--color-sage-deep);
+  margin: 1.2em 0;
+}
+.prose-chat :not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  background: var(--color-sage-deep);
+  border-radius: 0.35em;
+  padding: 0.1em 0.35em;
+}
+.prose-chat table {
+  display: block;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 0.925em;
+}
+.prose-chat th,
+.prose-chat td {
+  border: 1px solid var(--color-sage-deep);
+  padding: 0.4em 0.7em;
+  text-align: left;
+}
+.prose-chat th {
+  background: var(--color-sage-deep);
+  font-weight: 700;
+}
+
+/* Pastel syntax highlighting on a dark moss code block. */
+.hljs {
+  color: #eef0e6;
+}
+.hljs-comment,
+.hljs-quote {
+  color: #9fae95;
+  font-style: italic;
+}
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-meta .hljs-keyword,
+.hljs-doctag {
+  color: #d2c0f2;
+}
+.hljs-string,
+.hljs-regexp,
+.hljs-addition,
+.hljs-meta .hljs-string {
+  color: #b9e6c2;
+}
+.hljs-number,
+.hljs-literal,
+.hljs-symbol,
+.hljs-bullet {
+  color: #f6c9a8;
+}
+.hljs-title,
+.hljs-title.function_,
+.hljs-section {
+  color: #addaf7;
+}
+.hljs-built_in,
+.hljs-type,
+.hljs-title.class_ {
+  color: #f1e3a3;
+}
+.hljs-attr,
+.hljs-attribute,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-property {
+  color: #f5bfcd;
+}
+.hljs-meta,
+.hljs-selector-class,
+.hljs-selector-id {
+  color: #c4d9a8;
+}
+.hljs-deletion {
+  color: #f5b5b5;
+}
+.hljs-emphasis {
+  font-style: italic;
+}
+.hljs-strong {
+  font-weight: 700;
+}
+
+/* Thin scrollbars that match the green ground. */
+.scroll-soft {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-moss-line) transparent;
+}
+
+@keyframes pulse-dot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.3;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+.typing-dot {
+  animation: pulse-dot 1.2s infinite ease-in-out;
+}
+.typing-dot:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.typing-dot:nth-child(3) {
+  animation-delay: 0.3s;
+}

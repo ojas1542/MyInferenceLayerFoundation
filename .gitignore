@@ -1,0 +1,19 @@
+# Model weights are downloaded separately (see README).
+*.gguf
+
+# Build output and dependencies
+bin/
+node_modules/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Unused scaffold, kept out of the repo
+imsgagent/
+
+# Original of public/images/camp-night.jpg
+personal-agent/DSC02431.jpg
+
+.DS_Store

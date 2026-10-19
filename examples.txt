@@ -1,0 +1,117 @@
+Example requests for the inference layer API (default address localhost:9000)
+
+Start the workers and the API first (three terminals):
+
+  llama-server -m ~/MyInferenceLayerFoundation/Qwen3.5-9B-Q4_K_M.gguf \
+    -ngl 99 --jinja --port 8080 -c 131072 \
+    -fa on -ctk q8_0 -ctv q8_0 -ub 2048 \
+    --temp 1.0 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 1.5
+  llama-server -m ~/MyInferenceLayerFoundation/Qwen3-Embedding-0.6B-Q8_0.gguf \
+    --embeddings --pooling last -ngl 99 -c 8192 -b 8192 -ub 8192 --port 8081
+  cd ~/MyInferenceLayerFoundation && go run .
+
+The ports must be explicit: this llama-server build defaults to 9931,
+while the API expects the chat worker on 8080 (LLAMA_URL) and the
+embedding worker on 8081 (EMBED_URL).
+
+The 128K context window is for the Eve agent, whose system prompt alone is
+~24K tokens. Qwen3.5 9B handles 256K natively, and only 8 of its 32 layers
+keep a KV cache, so 128K with an 8-bit cache needs about 2 GB on top of the
+5.7 GB model. The sampling flags are Qwen's recommended thinking-mode
+defaults.
+
+Chat UI (a fourth terminal), then open http://localhost:3000:
+
+  cd ~/MyInferenceLayerFoundation/ui && npm run build && npm start
+
+The UI talks to the API at INFERENCE_API_URL (default
+http://127.0.0.1:9000). Use `npm run dev` instead while editing the UI.
+
+Personal agent (Vercel Eve template, needs Docker Desktop running), then
+open http://localhost:3200:
+
+  cd ~/MyInferenceLayerFoundation/personal-agent
+  docker compose -f compose.local.yaml up -d
+  PATH=/opt/homebrew/opt/node@24/bin:$PATH PORT=3200 corepack pnpm dev
+
+The template needs Node 24, while bash finds the Intel Node 20 in
+/usr/local first. Keep the PATH prefix on the same line as the command:
+under Node 20, pnpm crashes at startup and nothing listens on 3200.
+
+The first message after the model starts takes 1-2 minutes, since the
+~23K-token agent prompt is processed once. After that the prompt is cached
+and turns take seconds, also in new chats.
+
+iMessage channel (through Photon). Text +1 628 264 9335 from the phone
+number linked under Settings, Profile. Run the bridge alongside the agent
+(a fifth terminal):
+
+  cd ~/MyInferenceLayerFoundation/imessage-bridge
+  PATH=/opt/homebrew/opt/node@24/bin:$PATH npm start
+
+Photon delivers this project's messages to a connected SDK client, not to
+webhooks, so the bridge holds that connection: it posts each message to
+the agent's imessage channel (localhost:3200/imessage/inbound) and sends
+replies back from its outbox on 127.0.0.1:3201. No tunnel is needed.
+Credentials: IMESSAGE_PROJECT_ID and IMESSAGE_PROJECT_SECRET in
+personal-agent/.env.
+
+
+# Health check (200 if both workers are up, 503 otherwise)
+curl localhost:9000/healthz
+
+# Generate a full response
+curl localhost:9000/v1/generate \
+  -d '{"prompt": "What is the capital of France?"}'
+
+# Skip Qwen3's thinking step by ending the prompt with /no_think
+curl localhost:9000/v1/generate \
+  -d '{"prompt": "What is the capital of France? /no_think"}'
+
+# Limit the response length (cut-off answers are not cached)
+curl localhost:9000/v1/generate \
+  -d '{"prompt": "Write an essay on rivers", "max_tokens": 100}'
+
+# Stream the response as server-sent events (-N disables curl buffering)
+curl -N localhost:9000/v1/generate \
+  -d '{"prompt": "Tell me about owls", "stream": true}'
+
+# Same stream, printed as plain text as it is generated (needs jq)
+curl -sN localhost:9000/v1/generate \
+  -d '{"prompt": "Tell me about owls", "stream": true}' \
+  | sed -un 's/^data: //p' \
+  | jq -j --unbuffered '.text // .reasoning // empty'
+
+# Semantic cache: run this after the France example above. The reworded
+# question is answered from the cache with "cached": true and a
+# "similarity" score.
+curl localhost:9000/v1/generate \
+  -d '{"prompt": "What'"'"'s the capital city of France?"}'
+
+# Skip the cache lookup and replace the cached answer with a new one
+curl localhost:9000/v1/generate \
+  -d '{"prompt": "What is the capital of France?", "refresh_cache": true}'
+
+# A conversation with history (only single questions are cached)
+curl localhost:9000/v1/generate -d '{"messages": [
+  {"role": "user", "content": "My name is Ada. /no_think"},
+  {"role": "assistant", "content": "Nice to meet you, Ada!"},
+  {"role": "user", "content": "What is my name? /no_think"}]}'
+
+# Attach a text file to a message (never cached)
+curl localhost:9000/v1/generate -d '{"messages": [{"role": "user",
+  "content": "What port does the server use? /no_think",
+  "attachments": [{"name": "config.yaml", "content": "port: 4321"}]}]}'
+
+# Name of the loaded model
+curl localhost:9000/v1/info
+
+# Context window usage: how many tokens a conversation (same body as
+# /v1/generate) would use as a prompt, out of the model's window
+curl localhost:9000/v1/context -d '{"messages": [
+  {"role": "user", "content": "Hello!"}]}'
+
+# OpenAI-compatible chat completions (streaming and tool calls supported,
+# never cached). This is what the Eve agent uses.
+curl localhost:9000/v1/chat/completions -d '{"model": "qwen3-8b",
+  "messages": [{"role": "user", "content": "Hello! /no_think"}]}'
