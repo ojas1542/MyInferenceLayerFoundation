@@ -7,6 +7,19 @@ import { persistThreadSession, resumeOptionsFromThread } from "~/composables/cha
 import { recordStreamEvent } from "~/composables/chat/stream-log";
 import { clearTurnFailure, recordTurnFailure, turnFailure } from "~/composables/chat/turn-errors";
 
+/** How much of the model's context window the session is using. */
+export type ContextUsage = {
+  /** Prompt tokens of the latest model call: the context the model saw. */
+  inputTokens: number;
+  /** Tokens that call generated, which join the context for the next one. */
+  outputTokens: number;
+  /** Prompt tokens the model server reused from its cache, when reported. */
+  cacheReadTokens?: number;
+  /** Model calls in the latest turn; tool use adds one per round trip. */
+  turnSteps: number;
+  modelId?: string;
+};
+
 /** The four statuses the Nuxt UI chat components understand. */
 export type ChatStatus = "ready" | "submitted" | "streaming" | "error";
 
@@ -36,6 +49,12 @@ export function useChatSession(thread: ThreadRecord) {
   const chatId = thread.id;
   const initial = resumeOptionsFromThread(thread);
 
+  // Filled from step events, which a resumed session replays too.
+  const contextUsage = ref<ContextUsage>();
+  let modelId: string | undefined;
+  let usageTurnId: string | undefined;
+  let turnSteps = 0;
+
   const agent = useEveAgent({
     ...initial,
     onSessionChange: (session) => {
@@ -45,6 +64,23 @@ export function useChatSession(thread: ThreadRecord) {
       }
     },
     onEvent: (event) => {
+      if (event.type === "step.started") {
+        modelId = event.data.modelId;
+      }
+
+      if (event.type === "step.completed" && event.data.usage?.inputTokens) {
+        const { usage, turnId } = event.data;
+        turnSteps = turnId === usageTurnId ? turnSteps + 1 : 1;
+        usageTurnId = turnId;
+        contextUsage.value = {
+          inputTokens: usage.inputTokens ?? 0,
+          outputTokens: usage.outputTokens ?? 0,
+          cacheReadTokens: usage.cacheReadTokens,
+          turnSteps,
+          modelId,
+        };
+      }
+
       if (event.type === "authorization.required" || event.type === "authorization.completed") {
         recordAuthorizationEvent(event);
       }
@@ -133,6 +169,7 @@ export function useChatSession(thread: ThreadRecord) {
   }
 
   return {
+    contextUsage: readonly(contextUsage),
     messages,
     status,
     error,

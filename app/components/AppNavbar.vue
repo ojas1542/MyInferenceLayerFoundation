@@ -16,8 +16,6 @@ import { startNewChat } from "~/composables/chat/navigation";
 
       <UserMenu />
 
-      <UColorModeButton />
-
       <UButton
         color="neutral"
         variant="ghost"

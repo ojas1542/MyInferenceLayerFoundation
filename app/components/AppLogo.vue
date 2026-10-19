@@ -1,11 +1,11 @@
 <template>
-  <svg
-    viewBox="0 0 76 65"
-    fill="currentColor"
-    xmlns="http://www.w3.org/2000/svg"
+  <span
     aria-hidden="true"
-    class="inline-block shrink-0"
+    class="inline-flex size-8 shrink-0 items-center justify-center rounded-xl bg-mint text-ink"
   >
-    <path d="M37.5274 0L75.0548 65H0L37.5274 0Z" />
-  </svg>
+    <UIcon
+      name="i-lucide-tent-tree"
+      class="size-[18px]"
+    />
+  </span>
 </template>

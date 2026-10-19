@@ -30,26 +30,31 @@ function summarizeDay() {
 const quickChats = [
   {
     label: "Who are you?",
+    tone: "bg-peach hover:bg-peach",
     icon: "i-lucide-user-round",
     action: () => createChat("Who are you?"),
   },
   {
     label: "What can you help me with?",
+    tone: "bg-lavender hover:bg-lavender",
     icon: "i-lucide-message-circle-question",
     action: () => createChat("What can you help me with?"),
   },
   {
     label: "What is the weather in Paris?",
+    tone: "bg-butter hover:bg-butter",
     icon: "i-lucide-sun",
     action: () => createChat("What is the weather in Paris?"),
   },
   {
     label: "What do you remember about me?",
+    tone: "bg-sky hover:bg-sky",
     icon: "i-lucide-brain",
     action: () => createChat("What do you remember about me?"),
   },
   {
     label: "Summarize my day",
+    tone: "bg-mint hover:bg-mint",
     icon: "i-lucide-calendar-days",
     action: summarizeDay,
   },
@@ -74,7 +79,7 @@ const quickChats = [
               {{ greeting }}
             </h1>
             <p class="text-sm text-muted sm:text-base">
-              V — your personal agent
+              Your personal agent, running on a local model
             </p>
           </div>
 
@@ -102,8 +107,9 @@ const quickChats = [
               :label="quickChat.label"
               size="sm"
               color="neutral"
-              variant="outline"
-              class="rounded-full"
+              variant="ghost"
+              class="rounded-full text-ink hover:brightness-95"
+              :class="quickChat.tone"
               @click="quickChat.action()"
             />
           </div>

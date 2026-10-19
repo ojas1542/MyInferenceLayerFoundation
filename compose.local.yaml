@@ -1,0 +1,25 @@
+# Local infrastructure for running the personal agent against the local
+# inference layer. Start with:
+#   docker compose -f compose.local.yaml up -d
+services:
+  postgres:
+    image: postgres:17.6-alpine
+    container_name: personal-agent-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: agent
+      POSTGRES_PASSWORD: agent
+      POSTGRES_DB: personal_agent
+    # 5433 avoids clashing with a Postgres already using the default 5432.
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - personal-agent-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agent -d personal_agent"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  personal-agent-postgres:

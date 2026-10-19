@@ -4,6 +4,8 @@ const noStore = { "cache-control": "no-store" } as const;
 export default defineNuxtConfig({
   modules: ["@nuxt/ui", "@nuxt/eslint", "@comark/nuxt", "eve/nuxt", "@nuxthub/core", "@vercel/analytics"],
   css: ["~/assets/css/main.css"],
+  // One pastel theme over the background photo, so no dark mode.
+  ui: { colorMode: false },
   devtools: { enabled: true },
   compatibilityDate: "latest",
   experimental: {
@@ -48,7 +50,7 @@ export default defineNuxtConfig({
   app: {
     head: {
       htmlAttrs: { lang: "en" },
-      title: "V",
+      title: "Ojas's AI Lab",
       titleTemplate: "%s",
       charset: "utf-8",
       viewport: "width=device-width, initial-scale=1",
@@ -56,10 +58,10 @@ export default defineNuxtConfig({
         {
           name: "description",
           content:
-            "Your personal AI agent. Chat on the web, Slack, or iMessage — query Linear and pick up where you left off.",
+            "A personal AI agent running on a local model. Chat on the web or by iMessage, and pick up where you left off.",
         },
-        { name: "theme-color", content: "#1b1718" },
-        { name: "color-scheme", content: "light dark" },
+        { name: "theme-color", content: "#2d3828" },
+        { name: "color-scheme", content: "light" },
         { name: "robots", content: "index, follow" },
       ],
       link: [
@@ -70,8 +72,8 @@ export default defineNuxtConfig({
 
   fonts: {
     families: [
-      { name: 'Geist', weights: ['100 900'], global: true },
-      { name: 'Geist Mono', weights: ['100 900'], global: true },
+      { name: "Archivo", weights: ["100 900"], global: true },
+      { name: "Geist Mono", weights: ["100 900"], global: true },
     ],
   },
 
@@ -89,6 +91,8 @@ export default defineNuxtConfig({
     betterAuthUrl: process.env.BETTER_AUTH_URL,
     public: {
       siteUrl: process.env.NUXT_PUBLIC_SITE_URL || "",
+      // The model's context window, as the agent sees it (agent/agent.ts).
+      contextWindowTokens: Number(process.env.INFERENCE_CONTEXT_TOKENS ?? 32_768),
     },
   },
 });

@@ -2,6 +2,8 @@
 import { startNewChat } from "~/composables/chat/navigation";
 import { useThreadList } from "~/composables/chat/useThreads";
 
+const site = useSite();
+
 const sidebarOpen = ref(false);
 const searchOpen = ref(false);
 
@@ -51,15 +53,21 @@ defineShortcuts({
       collapsible
       resizable
       :menu="{ inset: true }"
-      class="border-r-0 py-4 dark:[--ui-bg-elevated:var(--ui-color-neutral-900)]"
+      class="on-photo border-r-0 py-4"
     >
       <template #header="{ collapsed }">
         <NuxtLink
           to="/"
-          class="flex items-center min-w-0"
-          :class="collapsed ? 'mx-auto' : 'px-2.5'"
+          class="flex min-w-0 items-center gap-2.5"
+          :class="collapsed ? 'mx-auto' : 'px-1'"
         >
-          <AppLogo class="h-5 w-auto shrink-0 text-highlighted" />
+          <AppLogo />
+          <span
+            v-if="!collapsed"
+            class="truncate font-bold tracking-tight text-highlighted"
+          >
+            {{ site.name }}
+          </span>
         </NuxtLink>
 
         <UDashboardSidebarCollapse
@@ -124,7 +132,9 @@ defineShortcuts({
       :groups="searchGroups"
     />
 
-    <div class="m-2 flex flex-1 min-w-0 overflow-hidden rounded-xl bg-muted shadow-sm ring ring-default lg:ml-0">
+    <div
+      class="m-2 flex min-w-0 flex-1 overflow-hidden glass rounded-2xl shadow-xl lg:ml-0"
+    >
       <slot />
     </div>
   </UDashboardGroup>

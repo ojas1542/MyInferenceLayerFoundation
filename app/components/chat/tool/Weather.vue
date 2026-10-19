@@ -14,11 +14,21 @@ const color = computed(() => {
   return (
     {
       "output-available":
-        "bg-gradient-to-br from-sky-400 via-blue-500 to-indigo-600 text-white dark:from-sky-500 dark:via-blue-600 dark:to-indigo-700",
+        "bg-linear-to-br from-sky to-lavender text-ink",
       "output-error": "bg-muted text-error",
     }[props.invocation.state as string] || "bg-muted text-muted"
   );
 });
+
+// ISO dates ("2026-10-19") read better as short weekdays and fit five
+// columns on narrow screens. UTC keeps server and client renders equal.
+function dayLabel(day: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return day;
+  return new Date(`${day}T00:00:00Z`).toLocaleDateString("en-US", {
+    weekday: "short",
+    timeZone: "UTC",
+  });
+}
 
 const message = computed(() => {
   return (
@@ -40,13 +50,13 @@ const message = computed(() => {
       <div class="mb-3 flex items-start justify-between">
         <div class="flex items-baseline">
           <span class="text-4xl font-bold">{{ invocation.output.temperature }}°</span>
-          <span class="text-base text-white/80">C</span>
+          <span class="text-base text-ink/70">C</span>
         </div>
         <div class="text-right">
           <div class="mb-1 text-base font-medium">
             {{ invocation.output.location }}
           </div>
-          <div class="text-xs text-white/70">
+          <div class="text-xs text-ink/70">
             H:{{ invocation.output.temperatureHigh }}° L:{{ invocation.output.temperatureLow }}°
           </div>
         </div>
@@ -56,7 +66,7 @@ const message = computed(() => {
         <div class="flex items-center gap-2">
           <UIcon
             :name="`i-lucide-${invocation.output.condition.icon}`"
-            class="size-6 text-white"
+            class="size-6"
           />
           <div class="text-sm font-medium">
             {{ invocation.output.condition.text }}
@@ -67,14 +77,14 @@ const message = computed(() => {
           <div class="flex items-center gap-1">
             <UIcon
               name="i-lucide-droplets"
-              class="size-3 text-blue-200"
+              class="size-3 text-ink/60"
             />
             <span>{{ invocation.output.humidity }}%</span>
           </div>
           <div class="flex items-center gap-1">
             <UIcon
               name="i-lucide-wind"
-              class="size-3 text-blue-200"
+              class="size-3 text-ink/60"
             />
             <span>{{ invocation.output.windSpeed }} km/h</span>
           </div>
@@ -90,19 +100,19 @@ const message = computed(() => {
           :key="index"
           class="flex flex-col items-center gap-1.5"
         >
-          <div class="text-xs font-medium text-white/70">
-            {{ forecast.day }}
+          <div class="text-xs font-medium text-ink/70">
+            {{ dayLabel(forecast.day) }}
           </div>
 
           <UIcon
             :name="`i-lucide-${forecast.condition.icon}`"
-            class="size-5 text-white"
+            class="size-5"
           />
-          <div class="text-xs font-medium">
+          <div class="text-center text-xs font-medium">
             <div>
               {{ forecast.high }}°
             </div>
-            <div class="text-white/60">
+            <div class="text-ink/60">
               {{ forecast.low }}°
             </div>
           </div>

@@ -11,6 +11,9 @@ importers:
       '@ai-sdk/mcp':
         specifier: ^2.0.41
         version: 2.0.41(zod@4.5.4)
+      '@ai-sdk/openai-compatible':
+        specifier: 3.0.41
+        version: 3.0.41(zod@4.5.4)
       '@comark/nuxt':
         specifier: ^0.6.2
         version: 0.6.2(magicast@0.5.4)(nuxt@4.5.2(eeee94de71da3700bbd6aad2ac64ee6d))(shiki@4.4.3)(vue@3.5.42(typescript@6.0.3))
@@ -107,6 +110,12 @@ packages:
 
   '@ai-sdk/mcp@2.0.41':
     resolution: {integrity: sha512-1u3HJYmgehXl1cz7ipi3NO8HrT6SdozZ7DNEh9MXdQE7knAnq70yhD8DIqfRdk/iZ3Net7QRmECUC+R5ISG0SQ==}
+    engines: {node: '>=22'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
+
+  '@ai-sdk/openai-compatible@3.0.41':
+    resolution: {integrity: sha512-djOLRg4WOq5EINvWLfw2dniO14vBrf0iMRs/aXAQqsp4a67Wi49aMpZuvC7C7L3VpL43rnFzS1fWw7T6vpzgUQ==}
     engines: {node: '>=22'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -7282,6 +7291,12 @@ snapshots:
       '@ai-sdk/provider-utils': 5.0.34(zod@4.5.4)
       cross-spawn: 7.0.6
       pkce-challenge: 5.0.1
+      zod: 4.5.4
+
+  '@ai-sdk/openai-compatible@3.0.41(zod@4.5.4)':
+    dependencies:
+      '@ai-sdk/provider': 4.0.9
+      '@ai-sdk/provider-utils': 5.0.34(zod@4.5.4)
       zod: 4.5.4
 
   '@ai-sdk/provider-utils@5.0.34(zod@4.5.4)':

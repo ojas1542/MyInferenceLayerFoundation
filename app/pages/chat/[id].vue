@@ -25,6 +25,7 @@ if (error.value || !data.value?.thread) {
 const thread = computed(() => data.value!.thread);
 
 const {
+  contextUsage,
   messages,
   status,
   error: chatError,
@@ -110,6 +111,7 @@ function handleInputResponses(responses: Parameters<typeof respond>[0]) {
             :status="status"
             :spacing-offset="160"
             :assistant="{ side: 'left', variant: 'naked', ui: { container: 'relative flex w-full min-w-0 items-start' } }"
+            :user="{ ui: { content: 'rounded-2xl rounded-br-md bg-peach text-ink' } }"
             class="pt-(--ui-header-height) pb-4 sm:pb-6"
           >
             <template #indicator>
@@ -147,11 +149,12 @@ function handleInputResponses(responses: Parameters<typeof respond>[0]) {
             v-model="input"
             :error="chatError"
             variant="subtle"
-            class="sticky bottom-0 z-10 [view-transition-name:chat-prompt] rounded-b-none"
+            class="sticky bottom-0 z-10 [view-transition-name:chat-prompt] rounded-b-none bg-default/85 backdrop-blur-2xl"
             :ui="{ base: 'px-1.5' }"
             @submit="handleSubmit"
           >
             <template #footer>
+              <ChatContextMeter :usage="contextUsage" />
               <ChatStreamInspector :status="status" />
 
               <UChatPromptSubmit

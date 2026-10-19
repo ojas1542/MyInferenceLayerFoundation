@@ -36,6 +36,7 @@
   },
   "dependencies": {
     "@ai-sdk/mcp": "^2.0.41",
+    "@ai-sdk/openai-compatible": "3.0.41",
     "@comark/nuxt": "^0.6.2",
     "@github-tools/eve-extension": "^0.7.0",
     "@github-tools/sdk": "^1.16.0",

@@ -19,9 +19,8 @@ const loading = ref(false);
 const highlights = [
   { icon: "i-lucide-message-square", label: "Web chat" },
   { icon: "i-lucide-smartphone", label: "iMessage" },
-  { icon: "i-simple-icons-slack", label: "Slack" },
-  { icon: "i-simple-icons-linear", label: "Linear" },
   { icon: "i-lucide-brain", label: "Long-term memory" },
+  { icon: "i-lucide-cpu", label: "Local model" },
 ];
 
 const redirectTo = computed(() => {
@@ -67,10 +66,10 @@ async function handleSubmit() {
 </script>
 
 <template>
-  <div class="flex min-h-svh flex-col bg-default text-default lg:flex-row">
-    <section class="flex flex-1 items-center justify-center border-b border-default px-6 py-10 lg:border-b-0 lg:border-e lg:px-12 lg:py-8">
+  <div class="flex min-h-svh flex-col-reverse text-default lg:flex-row">
+    <section class="flex flex-1 items-center justify-center px-6 py-10 lg:px-12 lg:py-8">
       <div class="w-full max-w-sm">
-        <UCard class="w-full">
+        <UCard class="w-full rounded-2xl shadow-xl ring-white/15">
           <template #header>
             <h2 class="text-lg font-semibold text-highlighted">
               {{ mode === "sign-in" ? "Sign in" : "Create account" }}
@@ -152,31 +151,19 @@ async function handleSubmit() {
       </div>
     </section>
 
-    <section class="relative flex flex-1 flex-col px-6 py-6 sm:px-8 lg:px-12 lg:py-8 hero-glow">
-      <header class="flex items-center justify-between">
-        <NuxtLink
-          to="https://vercel.com/eve"
-          target="_blank"
-          class="text-highlighted transition-opacity hover:opacity-80"
-          aria-label="Eve on Vercel"
-        >
-          <AppLogo class="h-[18px] w-auto text-highlighted" />
-        </NuxtLink>
-
-        <UColorModeButton
-          color="neutral"
-          variant="ghost"
-        />
+    <section class="on-photo relative flex flex-1 flex-col px-6 py-6 sm:px-8 lg:px-12 lg:py-8">
+      <header class="flex items-center">
+        <AppLogo />
       </header>
 
       <div class="flex flex-1 flex-col justify-center py-10 lg:py-16">
         <div class="max-w-md space-y-5">
           <div class="space-y-3">
-            <h1 class="text-3xl font-semibold tracking-tight text-highlighted sm:text-4xl">
-              V
+            <h1 class="text-3xl font-bold tracking-tight text-highlighted sm:text-4xl">
+              {{ site.name }}
             </h1>
-            <p class="text-sm leading-relaxed text-muted sm:text-base">
-              A durable AI assistant with long-term memory. Chat on the web, Slack, or iMessage — query Linear and pick up where you left off.
+            <p class="text-sm leading-relaxed text-toned sm:text-base">
+              {{ site.description }}
             </p>
           </div>
 
@@ -197,19 +184,6 @@ async function handleSubmit() {
       </div>
 
       <footer class="flex flex-wrap items-center gap-x-4 gap-y-3 pt-6">
-        <NuxtLink
-          :to="site.deployUrl"
-          target="_blank"
-          rel="noopener"
-        >
-          <img
-            src="https://vercel.com/button"
-            alt="Deploy with Vercel"
-            width="133"
-            height="32"
-          >
-        </NuxtLink>
-
         <p class="text-xs text-dimmed">
           Built with
           <NuxtLink

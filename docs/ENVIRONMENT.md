@@ -13,7 +13,7 @@ cp .env.example .env
 | Variable | How to get it |
 |----------|---------------|
 | `BETTER_AUTH_SECRET` | Run `openssl rand -base64 32` |
-| `BETTER_AUTH_URL` | `http://localhost:3000` locally, or your production URL |
+| `BETTER_AUTH_URL` | `http://localhost:3200` locally, or your production URL |
 | `INTERNAL_API_SECRET` | Run `openssl rand -base64 32` (must match on web + eve services) |
 
 On Vercel, set them on **both** the `web` and `eve` services — and add a database (see below).
@@ -78,7 +78,7 @@ Public URL of the Nuxt app. Used for auth callbacks and as the base URL for agen
 
 | Environment | Value |
 |-------------|-------|
-| Local | `http://localhost:3000` |
+| Local | `http://localhost:3200` |
 | Production | `https://your-domain.vercel.app` |
 
 ## Internal API
@@ -95,22 +95,35 @@ Used for:
 
 **Must be identical** on both Vercel services (`web` and `eve`). If missing or mismatched, Slack and phone linking will fail silently or return 401.
 
-## Vercel Blob (memory)
+## Memory
 
-Eve's `fileMemory()` provider stores one private Blob document per user at
-`eve/memory/file/<scope>/MEMORY.md`. Attach a Blob store to the project and
-`BLOB_READ_WRITE_TOKEN` is provided automatically; without one the agent fails
-on its first memory recall.
+Eve's `fileMemory()` provider keeps one document per user in the app's
+Postgres table `memory_documents`, through `/api/internal/memory`. No extra
+variables are needed beyond `DATABASE_URL` and `INTERNAL_API_SECRET`.
 
-## AI provider
+## Local model
 
-This template does not define AI keys in `.env.example`. The default model is set in [`agent/agent.ts`](../agent/agent.ts):
+The agent talks to the local inference layer (the Go service at the repo
+root), which fronts llama.cpp. See [`agent/agent.ts`](../agent/agent.ts).
 
-```typescript
-model: "anthropic/claude-sonnet-5"
-```
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `INFERENCE_API_URL` | `http://127.0.0.1:9000/v1` | OpenAI-compatible endpoint of the inference layer |
+| `INFERENCE_CONTEXT_TOKENS` | `32768` | Context window; must match llama-server's `-c` |
 
-On Vercel, Eve handles provider configuration through the platform. For local development, follow [Eve docs](https://eve.dev) for your chosen provider.
+`INFERENCE_CONTEXT_TOKENS` also sizes the context meter in the chat composer.
+
+## iMessage (optional)
+
+iMessage runs through Photon and the bridge in
+[`imessage-bridge/`](../../imessage-bridge), which reads this same `.env`.
+
+| Variable | Purpose |
+|----------|---------|
+| `IMESSAGE_PROJECT_ID` | Photon project id |
+| `IMESSAGE_PROJECT_SECRET` | Photon project secret |
+| `IMESSAGE_AGENT_URL` | Agent origin the bridge posts to (default `http://localhost:3200`) |
+| `IMESSAGE_BRIDGE_PORT` | Port of the bridge's local outbox (default `3201`) |
 
 ## Vercel Connect (optional)
 

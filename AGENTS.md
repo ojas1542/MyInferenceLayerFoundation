@@ -58,8 +58,20 @@ read over the internal API. That is app data the Profile page owns, distinct
 from the memory slot below, which holds what the agent chooses to remember.
 
 Eve's `fileMemory()` provider, bound in [`agent/memory/profile.ts`](agent/memory/profile.ts)
-and scoped per principal. Documents live in private Vercel Blob storage; the
-agent maintains them with `profile__save_memory` and `profile__remove_memory`.
+and scoped per principal under a fixed namespace (eve's default changes with
+every `eve dev` restart). Web chat and linked iMessage share one scope.
+Documents live in the app's Postgres table `memory_documents`, reached
+through `/api/internal/memory` by the backend in
+[`agent/lib/memory-internal.ts`](agent/lib/memory-internal.ts); the agent
+maintains them with `profile__save_memory` and `profile__remove_memory`.
+
+## Local model
+
+[`agent/agent.ts`](agent/agent.ts) points the agent at the local inference
+layer's OpenAI-compatible API (`INFERENCE_API_URL`, default
+`http://127.0.0.1:9000/v1`), which fronts llama.cpp. `INFERENCE_CONTEXT_TOKENS`
+must match llama-server's `-c`. Postgres for local development runs from
+[`compose.local.yaml`](compose.local.yaml).
 
 ## Customization Checklist
 

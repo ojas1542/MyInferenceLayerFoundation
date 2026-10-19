@@ -97,10 +97,10 @@ async function confirmDelete() {
           >
             <NuxtLink
               :to="`/chat/${thread.id}`"
-              class="flex items-center gap-1.5 overflow-hidden rounded-md px-2 py-1 text-sm transition-colors"
+              class="flex items-center gap-1.5 overflow-hidden rounded-lg px-2.5 py-1.5 text-sm transition-colors"
               :class="isActive(thread.id)
-                ? 'bg-linear-to-r from-elevated to-elevated/0 text-highlighted brightness-125'
-                : 'text-muted hover:bg-linear-to-r hover:from-elevated hover:to-elevated/0'"
+                ? 'bg-mint font-medium text-ink'
+                : 'text-toned hover:bg-elevated hover:text-highlighted'"
             >
               <span class="truncate">{{ thread.title }}</span>
             </NuxtLink>

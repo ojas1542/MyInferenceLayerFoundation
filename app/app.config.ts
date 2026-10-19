@@ -1,9 +1,9 @@
 export default defineAppConfig({
   site: {
-    name: "V",
-    title: "V",
+    name: "Ojas's AI Lab",
+    title: "Ojas's AI Lab",
     description:
-      "Your personal AI agent. Chat on the web, Slack, or iMessage — query Linear and pick up where you left off.",
+      "A personal AI agent running on a local model. Chat on the web or by iMessage, and pick up where you left off.",
     tagline: "Vercel × Eve",
     author: "Hugo Richard",
     repo: "https://github.com/vercel-labs/personal-agent-template",
@@ -14,8 +14,8 @@ export default defineAppConfig({
   },
   ui: {
     colors: {
-      primary: "neutral",
-      neutral: "neutral",
+      primary: "moss",
+      neutral: "trail",
     },
     button: {
       slots: {

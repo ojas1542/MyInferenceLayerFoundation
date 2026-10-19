@@ -1,20 +1,156 @@
 @import "tailwindcss";
 @import "@nuxt/ui";
 
-@theme {
-  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+/*
+ * Granola / outdoorsy theme, shared with the inference UI in ../ui: a night
+ * camp photo as the ground, oat and sage pastel surfaces with dark ink text,
+ * cream text where it sits directly on the photo. "Patagonia" is listed
+ * first so a locally installed copy wins; Archivo is the free stand-in.
+ */
+@theme static {
+  --font-sans: "Patagonia", "Archivo", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, monospace;
+
+  /* Earthy green-grey, used as Nuxt UI's neutral palette. */
+  --color-trail-50: #f7f5ee;
+  --color-trail-100: #eeede2;
+  --color-trail-200: #dfe2d2;
+  --color-trail-300: #c6cbb6;
+  --color-trail-400: #9ea690;
+  --color-trail-500: #737e6a;
+  --color-trail-600: #5a6552;
+  --color-trail-700: #434d3c;
+  --color-trail-800: #2f3729;
+  --color-trail-900: #232a1f;
+  --color-trail-950: #161b13;
+
+  /* Moss green, used as Nuxt UI's primary palette. */
+  --color-moss-50: #f2f5ee;
+  --color-moss-100: #e1e9d8;
+  --color-moss-200: #c7d6b8;
+  --color-moss-300: #a5bc92;
+  --color-moss-400: #82a06d;
+  --color-moss-500: #657f52;
+  --color-moss-600: #4e6045;
+  --color-moss-700: #415238;
+  --color-moss-800: #36432f;
+  --color-moss-900: #2d3828;
+  --color-moss-950: #171e14;
+
+  /* Pastels, matching ../ui/src/app/globals.css. */
+  --color-oat: #fbf8ef;
+  --color-cream: #f6f2e7;
+  --color-sage: #e8eedd;
+  --color-sage-deep: #d6e0c8;
+  --color-peach: #f7dac6;
+  --color-lavender: #e4ddf1;
+  --color-mint: #cfe9d4;
+  --color-mint-deep: #b7dcc0;
+  --color-butter: #f5ebb8;
+  --color-sky: #d5e6f3;
+  --color-rose: #f5d3d3;
+  --color-ink: #2b3326;
+
+  /* Deeper pastels for meters, matching ../ui. */
+  --color-leaf: #7fb98d;
+  --color-honey: #d9b84a;
+  --color-clay: #d98a8a;
 }
 
 :root {
-  --ui-primary: black;
+  --ui-primary: var(--ui-color-primary-600);
   --ui-container: var(--container-3xl);
-  --ui-radius: 0.15rem;
+  --ui-radius: 0.375rem;
+
+  --ui-text-dimmed: var(--ui-color-neutral-500);
+  --ui-text-muted: var(--ui-color-neutral-600);
+  --ui-text-toned: var(--ui-color-neutral-700);
+  --ui-text: var(--color-ink);
+  --ui-text-highlighted: var(--ui-color-neutral-900);
+  --ui-text-inverted: var(--color-cream);
+
+  --ui-bg: var(--color-oat);
+  --ui-bg-muted: var(--color-cream);
+  --ui-bg-elevated: var(--color-sage);
+  --ui-bg-accented: var(--color-sage-deep);
+  --ui-bg-inverted: var(--color-moss-600);
+
+  --ui-border: var(--color-trail-200);
+  --ui-border-muted: var(--color-trail-100);
+  --ui-border-accented: var(--color-trail-300);
+  --ui-border-inverted: var(--color-moss-600);
+
   overscroll-behavior-y: none;
 }
 
-.dark {
-  --ui-primary: white;
+/* The photo stays put under every page; the gradient keeps cream text
+ * readable over the brighter horizon. */
+html {
+  background:
+    linear-gradient(rgb(16 20 14 / 0.25), rgb(16 20 14 / 0.55)),
+    url("/images/camp-night.jpg") center 70% / cover fixed,
+    var(--color-moss-950);
+}
+
+body {
+  background: transparent;
+}
+
+/* Clear glass for the main panel: the photo shows through, lightly
+ * blurred, so text in it is cream like the sidebar's (see .on-photo) and
+ * surfaces inside it are smoky glass. Pastel pieces (bubbles, chips, tool
+ * cards) keep their own ink text. The blur lives on a pseudo-element so the
+ * panel is not a backdrop root, which would stop nested frosted elements
+ * (the sticky composer) from blurring the messages scrolling beneath them. */
+.glass {
+  --ui-bg: rgb(16 20 14 / 0.5);
+  --ui-bg-muted: rgb(16 20 14 / 0.35);
+  --ui-bg-inverted: var(--color-mint);
+  --ui-text-inverted: var(--color-ink);
+
+  position: relative;
+  isolation: isolate;
+  scrollbar-color: rgb(246 242 231 / 0.3) transparent;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.5),
+    0 0 0 1px rgb(255 255 255 / 0.25),
+    0 20px 50px rgb(0 0 0 / 0.35);
+}
+
+.glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: rgb(250 243 224 / 0.001);
+  backdrop-filter: blur(10px) saturate(1.7);
+}
+
+/* Tokens for content placed directly on the photo: the sidebar, the
+ * login page and the clear main panel. */
+.on-photo,
+.glass {
+  --ui-primary: var(--color-mint);
+  --ui-text-dimmed: rgb(246 242 231 / 0.55);
+  --ui-text-muted: rgb(246 242 231 / 0.72);
+  --ui-text-toned: rgb(246 242 231 / 0.86);
+  --ui-text: var(--color-cream);
+  --ui-text-highlighted: #fffdf6;
+  --ui-bg-elevated: rgb(246 242 231 / 0.12);
+  --ui-bg-accented: rgb(246 242 231 / 0.18);
+  --ui-border: rgb(246 242 231 / 0.14);
+  --ui-border-muted: rgb(246 242 231 / 0.1);
+  --ui-border-accented: rgb(246 242 231 / 0.22);
+
+  /* body resolved its color from the root tokens; re-resolve it here so
+   * inherited text picks up the cream. */
+  color: var(--ui-text);
+}
+
+::selection {
+  background: var(--color-lavender);
+  color: var(--color-ink);
 }
 
 ::view-transition-old(root),
@@ -24,7 +160,7 @@
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: oklch(25% 0 0 / 0.5) transparent;
+  scrollbar-color: rgb(67 77 60 / 0.35) transparent;
 }
 
 *::-webkit-scrollbar {
@@ -37,27 +173,23 @@
 }
 
 *::-webkit-scrollbar-thumb {
-  background: oklch(25% 0 0 / 0.5);
+  background: rgb(67 77 60 / 0.35);
   border-radius: 3px;
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background: oklch(35% 0 0 / 0.6);
-}
-
-.dark {
-  --ui-bg: oklch(14.5% 0 0);
-  --ui-bg-muted: oklch(17.5% 0 0);
-  --ui-bg-elevated: oklch(20.5% 0 0);
-  --ui-bg-accented: oklch(26.9% 0 0);
-  --ui-border: oklch(26.9% 0 0);
-  --ui-border-muted: oklch(23% 0 0);
-  --ui-border-accented: oklch(30% 0 0);
+  background: rgb(67 77 60 / 0.5);
 }
 
 @layer base {
   body {
     @apply antialiased;
+  }
+
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.015em;
   }
 }
 
@@ -65,15 +197,7 @@
   background:
     radial-gradient(
       ellipse 90% 60% at 50% -15%,
-      color-mix(in oklab, var(--ui-text-toned) 14%, transparent),
+      color-mix(in oklab, var(--color-butter) 55%, transparent),
       transparent 72%
     );
-}
-
-html.dark .shiki span {
-  color: var(--shiki-dark) !important;
-  background-color: var(--shiki-dark-bg) !important;
-  font-style: var(--shiki-dark-font-style) !important;
-  font-weight: var(--shiki-dark-font-weight) !important;
-  text-decoration: var(--shiki-dark-text-decoration) !important;
 }
