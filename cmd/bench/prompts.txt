@@ -1,0 +1,38 @@
+# Prompt set for the cache benchmark. Each paragraph is one question:
+# the first line, then ways a user might ask it again. Each paragraph is
+# replayed as the first line, an exact repeat, then every other line.
+# Some questions are near misses of each other (Austria and Australia),
+# to catch the cache answering one with the other's answer.
+
+What is the capital of Australia? Answer in one sentence.
+what's the capital of australia? answer in one sentence.
+Which city is the capital of Australia? Answer in one sentence.
+
+What is the capital of Austria? Answer in one sentence.
+what's the capital city of austria? answer in one sentence.
+
+In one sentence, what is a semantic cache?
+in one sentence, what's a semantic cache?
+Explain in one sentence what a semantic cache is.
+
+In one sentence, what does HTTP status 429 mean?
+in one sentence what does an http 429 status code mean?
+
+In one sentence, what does HTTP status 503 mean?
+in one sentence what does an http 503 status code mean?
+
+How many bytes are in a kilobyte? Answer in one sentence.
+how many bytes are there in a kilobyte? answer in one sentence.
+
+How many bits are in a byte? Answer in one sentence.
+how many bits are there in a byte? answer in one sentence.
+
+In one sentence, why is the sky blue?
+in one sentence, why's the sky blue?
+Explain in one sentence why the sky looks blue.
+
+In one sentence, what is Redis?
+in one sentence what is redis?
+
+In one sentence, what is Prometheus used for?
+in one sentence, what's prometheus used for?

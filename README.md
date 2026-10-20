@@ -1,8 +1,9 @@
 # Ojas's AI Lab
 
 A personal AI stack that runs entirely on one Mac: a local LLM served by
-llama.cpp, a Go inference layer with a semantic response cache, a chat UI,
-and a durable personal agent you can reach from the web or by iMessage.
+llama.cpp, a Go inference layer with a semantic response cache, admission
+control and Prometheus metrics, a chat UI, and a durable personal agent you
+can reach from the web or by iMessage.
 
 ```mermaid
 flowchart LR
@@ -22,8 +23,14 @@ flowchart LR
 
   subgraph Inference
     GO["Go inference layer<br/>:9000"]
+    RD[(Redis :6379<br/>response cache)]
     LC["llama-server :8080<br/>Qwen3.5 9B"]
     LE["llama-server :8081<br/>Qwen3 Embedding 0.6B"]
+  end
+
+  subgraph Observability
+    PR[Prometheus :9090]
+    GF[Grafana :3001]
   end
 
   B1 --> UI -->|/v1/generate, /v1/context| GO
@@ -32,6 +39,10 @@ flowchart LR
   AG --- PG
   GO -->|chat, tokenize| LC
   GO -->|embeddings| LE
+  GO --- RD
+  PR -.->|scrape /metrics| GO
+  PR -.->|scrape /metrics| LC
+  GF --> PR
 ```
 
 ## Components
@@ -45,6 +56,8 @@ flowchart LR
 | llama-server (chat) | Qwen3.5 9B, 128K context | 8080 |
 | llama-server (embeddings) | Qwen3 Embedding 0.6B, used by the cache | 8081 |
 | Postgres | Agent accounts, threads and memory | 5433 |
+| Redis | Response cache that survives restarts (optional) | 6379 |
+| Prometheus, Grafana | Metrics and the inference dashboard | 9090, 3001 |
 
 ### Inference layer (Go, repo root)
 
@@ -57,21 +70,61 @@ A small, dependency-light HTTP server ([`main.go`](main.go),
 | `POST /v1/context` | How many tokens a conversation uses, and the context size. Powers the UI's context meter. |
 | `POST /v1/chat/completions`, `GET /v1/models` | OpenAI-compatible pass-through for SDK clients such as the agent, with streaming and tool calling intact. |
 | `GET /healthz`, `GET /v1/info` | Worker health and the model being served. |
+| `GET /metrics` | Prometheus metrics. |
 
-**Semantic cache** ([`cache.go`](cache.go)). `/v1/generate` answers repeated
+**Semantic cache** ([`cache.go`](cache.go),
+[`redis_cache.go`](redis_cache.go)). `/v1/generate` answers repeated
 questions without touching the model. A lookup first tries an exact match on
 the prompt's SHA-256, then embeds the prompt with the embedding worker and
 accepts the closest cached prompt above a cosine similarity of 0.95. Only a
 single question without attachments is cached, since answers inside a longer
-conversation depend on what came before. The cache is an in-memory LRU, so a
-restart clears it.
+conversation depend on what came before, and only answers that finished
+rather than hitting `max_tokens`. Entries are kept per chat model, so
+switching models never serves another model's answers.
+
+The cache has two backends:
+
+- **In memory** (default): an LRU of `CACHE_SIZE` entries. A semantic lookup
+  compares against every cached prompt, and a restart clears it.
+- **Redis** (set `REDIS_URL`): entries survive restarts and can be shared by
+  several layers. Each entry is a hash of prompt, response and embedding,
+  expiring after `CACHE_TTL`. A semantic lookup is one KNN query against a
+  Redis Query Engine HNSW vector index, so its cost doesn't grow linearly with
+  the cache. Needs Redis 8 (or Redis Stack); [`compose.yaml`](compose.yaml)
+  runs one with append-only persistence and LRU eviction past 1 GB.
 
 The OpenAI-compatible routes ([`openai.go`](openai.go)) deliberately skip the
 cache: agent turns depend on tool results and must never be replayed.
 
-Configuration is by environment variable: `ADDR` (`:9000`), `LLAMA_URL`
-(`http://127.0.0.1:8080`), `EMBED_URL` (`http://127.0.0.1:8081`),
-`CACHE_SIZE` (1000) and `CACHE_THRESHOLD` (0.95).
+**Admission control** ([`admission.go`](admission.go)). A single GPU can only
+run so many generations at once, and llama-server queues the rest without
+limit. The layer puts a bounded queue in front of it instead:
+
+- At most `MAX_CONCURRENT` generations run at once, matching llama-server's
+  slots (`-np`, 4 by default).
+- At most `MAX_QUEUE` more wait, in arrival order, each for at most
+  `QUEUE_TIMEOUT`.
+- Beyond that, a request gets `429 Too Many Requests` at once, or `503` if
+  its wait times out, both with `Retry-After`. The OpenAI routes use OpenAI's
+  error shape, so SDK clients such as the agent back off and retry on their
+  own.
+- Cache hits never queue, so they stay fast under load, and a client that
+  disconnects leaves the queue immediately.
+
+**Configuration** is by environment variable:
+
+| Variable | Default | |
+|----------|---------|-|
+| `ADDR` | `:9000` | Listen address |
+| `LLAMA_URL` | `http://127.0.0.1:8080` | Chat worker |
+| `EMBED_URL` | `http://127.0.0.1:8081` | Embedding worker |
+| `CACHE_THRESHOLD` | `0.95` | Minimum cosine similarity for a semantic hit |
+| `CACHE_SIZE` | `1000` | In-memory cache entries |
+| `REDIS_URL` | unset | Use Redis for the cache, e.g. `redis://127.0.0.1:6379` |
+| `CACHE_TTL` | `168h` | How long a Redis cache entry lives |
+| `MAX_CONCURRENT` | `4` | Generations running at once |
+| `MAX_QUEUE` | `16` | Requests allowed to wait for a slot |
+| `QUEUE_TIMEOUT` | `60s` | Longest wait for a slot |
 
 ### Chat UI ([`ui/`](ui))
 
@@ -136,23 +189,31 @@ pnpm (through corepack), Docker, and llama.cpp (`brew install llama.cpp`).
    curl -LO https://huggingface.co/Qwen/Qwen3-Embedding-0.6B-GGUF/resolve/main/Qwen3-Embedding-0.6B-Q8_0.gguf
    ```
 
-2. **Start the model workers and the inference layer** (one terminal each):
+2. **Start Redis, Prometheus and Grafana** (optional, needs Docker):
+
+   ```bash
+   docker compose up -d
+   ```
+
+3. **Start the model workers and the inference layer** (one terminal each):
 
    ```bash
    llama-server -m Qwen3.5-9B-Q4_K_M.gguf -ngl 99 --jinja --port 8080 \
-     -c 131072 -fa on -ctk q8_0 -ctv q8_0 -ub 2048 \
+     -c 131072 -fa on -ctk q8_0 -ctv q8_0 -ub 2048 --metrics \
      --temp 1.0 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 1.5
    llama-server -m Qwen3-Embedding-0.6B-Q8_0.gguf --embeddings \
      --pooling last -ngl 99 -c 8192 -b 8192 -ub 8192 --port 8081
-   go run .
+   REDIS_URL=redis://127.0.0.1:6379 go run .
    ```
+
+   Leave out `REDIS_URL` to keep the cache in memory.
 
    [`examples.txt`](examples.txt) has sample requests for every endpoint.
 
-3. **Chat UI**: `cd ui && npm install && npm run dev`, then open
+4. **Chat UI**: `cd ui && npm install && npm run dev`, then open
    http://localhost:3000.
 
-4. **Personal agent**:
+5. **Personal agent**:
 
    ```bash
    cd personal-agent
@@ -166,10 +227,48 @@ pnpm (through corepack), Docker, and llama.cpp (`brew install llama.cpp`).
    [`docs/ENVIRONMENT.md`](personal-agent/docs/ENVIRONMENT.md) for every
    variable.
 
-5. **iMessage (optional)**: set `IMESSAGE_PROJECT_ID` and
+6. **iMessage (optional)**: set `IMESSAGE_PROJECT_ID` and
    `IMESSAGE_PROJECT_SECRET` in `personal-agent/.env`, then
    `cd imessage-bridge && npm install && npm start`. Link your phone number
    in the agent's Settings.
+
+## Observability
+
+`docker compose up -d` starts Prometheus, which scrapes the inference layer
+and llama-server every 5 seconds, and Grafana at http://localhost:3001 with
+the **Inference layer** dashboard
+([`observability/`](observability)) already loaded:
+
+- **Cache hit rate**, lookups by result (exact, semantic, miss) and lookup
+  latency.
+- **Time to first token**, p50 and p95, for cached answers and the model.
+- **Tokens per second**: decode speed per generation and overall
+  throughput, from llama-server, so agent traffic counts too.
+- **Queue depth**, requests in flight, queue wait and rejections.
+- Request rate and p95 latency by route and status.
+
+The layer's own series are prefixed `inference_`; llama-server's are
+`llamacpp:` and need its `--metrics` flag.
+
+## Benchmark
+
+[`cmd/bench`](cmd/bench) replays a prompt set
+([`prompts.txt`](cmd/bench/prompts.txt)) against `/v1/generate`: each
+question as written, an exact repeat, then paraphrases, interleaved with
+other questions. Some questions are near misses of each other (the capital
+of Austria and of Australia, HTTP 429 and 503), so the benchmark also counts
+**wrong hits**, where the cache returned another question's answer. Run it
+on an empty cache:
+
+```bash
+docker compose exec redis redis-cli FLUSHALL
+go run ./cmd/bench
+```
+
+It prints the hit rate (exact and semantic), wrong hits, and p50, p95 and
+mean latency to the first token and to the full answer, for cached answers
+and for generated ones, plus the speedup between them. `-concurrency N`
+replays with N requests in flight, which also exercises admission control.
 
 ## Choosing the context window
 

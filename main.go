@@ -1,5 +1,6 @@
 // Command inferencelayer is a minimal HTTP API in front of llama.cpp
-// llama-server workers, with a semantic response cache.
+// llama-server workers, with a semantic response cache, admission control
+// and Prometheus metrics.
 package main
 
 import (
@@ -21,6 +22,14 @@ type config struct {
 	embedURL       string
 	cacheSize      int
 	cacheThreshold float64
+	// redisURL, if set, keeps the cache in Redis instead of in memory.
+	redisURL string
+	cacheTTL time.Duration
+	// Admission control: generations running at once, how many more may
+	// wait, and for how long.
+	maxConcurrent int
+	maxQueue      int
+	queueTimeout  time.Duration
 }
 
 func loadConfig() (config, error) {
@@ -28,6 +37,7 @@ func loadConfig() (config, error) {
 		addr:     envOr("ADDR", ":9000"),
 		llamaURL: envOr("LLAMA_URL", "http://127.0.0.1:8080"),
 		embedURL: envOr("EMBED_URL", "http://127.0.0.1:8081"),
+		redisURL: os.Getenv("REDIS_URL"),
 	}
 	var err error
 	cfg.cacheSize, err = strconv.Atoi(envOr("CACHE_SIZE", "1000"))
@@ -39,6 +49,22 @@ func loadConfig() (config, error) {
 	if err != nil || cfg.cacheThreshold <= 0 || cfg.cacheThreshold > 1 {
 		return cfg, fmt.Errorf("CACHE_THRESHOLD must be in (0, 1]")
 	}
+	cfg.cacheTTL, err = time.ParseDuration(envOr("CACHE_TTL", "168h"))
+	if err != nil || cfg.cacheTTL <= 0 {
+		return cfg, fmt.Errorf("CACHE_TTL must be a positive duration")
+	}
+	cfg.maxConcurrent, err = strconv.Atoi(envOr("MAX_CONCURRENT", "4"))
+	if err != nil || cfg.maxConcurrent <= 0 {
+		return cfg, fmt.Errorf("MAX_CONCURRENT must be a positive integer")
+	}
+	cfg.maxQueue, err = strconv.Atoi(envOr("MAX_QUEUE", "16"))
+	if err != nil || cfg.maxQueue < 0 {
+		return cfg, fmt.Errorf("MAX_QUEUE must be a non-negative integer")
+	}
+	cfg.queueTimeout, err = time.ParseDuration(envOr("QUEUE_TIMEOUT", "60s"))
+	if err != nil || cfg.queueTimeout <= 0 {
+		return cfg, fmt.Errorf("QUEUE_TIMEOUT must be a positive duration")
+	}
 	return cfg, nil
 }
 
@@ -49,6 +75,19 @@ func envOr(key, fallback string) string {
 	return fallback
 }
 
+func newCache(cfg config, embeddings *worker) (responseCache, error) {
+	if cfg.redisURL == "" {
+		log.Printf("cache: in memory, %d entries", cfg.cacheSize)
+		return newMemoryCache(
+			embeddings, cfg.cacheSize, cfg.cacheThreshold), nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	log.Printf("cache: redis, entries kept for %s", cfg.cacheTTL)
+	return newRedisCache(
+		ctx, cfg.redisURL, embeddings, cfg.cacheThreshold, cfg.cacheTTL)
+}
+
 func main() {
 	cfg, err := loadConfig()
 	if err != nil {
@@ -57,13 +96,13 @@ func main() {
 	client := &http.Client{}
 	chat := &worker{baseURL: cfg.llamaURL, client: client}
 	embeddings := &worker{baseURL: cfg.embedURL, client: client}
-	cache, err := newResponseCache(
-		embeddings, cfg.cacheSize, cfg.cacheThreshold)
+	cache, err := newCache(cfg, embeddings)
 	if err != nil {
 		log.Fatalf("cache: %v", err)
 	}
 	defer cache.close()
-	openai, err := newOpenAIProxy(cfg.llamaURL)
+	queue := newAdmission(cfg.maxConcurrent, cfg.maxQueue, cfg.queueTimeout)
+	openai, err := newOpenAIProxy(cfg.llamaURL, queue)
 	if err != nil {
 		log.Fatalf("LLAMA_URL: %v", err)
 	}
@@ -72,11 +111,12 @@ func main() {
 		chat:       chat,
 		embeddings: embeddings,
 		cache:      cache,
+		queue:      queue,
 		openai:     openai,
 	}
 	srv := &http.Server{
 		Addr:              cfg.addr,
-		Handler:           s.routes(),
+		Handler:           instrument(s.routes()),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

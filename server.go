@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // Large enough for a conversation with a few attached text files.
@@ -149,13 +151,15 @@ type streamDone struct {
 type server struct {
 	chat       *worker
 	embeddings *worker
-	cache      *responseCache
+	cache      responseCache
+	queue      *admission
 	openai     http.Handler
 }
 
 func (s *server) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.handleHealth)
+	mux.Handle("GET /metrics", promhttp.Handler())
 	mux.HandleFunc("GET /v1/info", s.handleInfo)
 	mux.HandleFunc("POST /v1/generate", s.handleGenerate)
 	mux.HandleFunc("POST /v1/context", s.handleContext)
@@ -260,14 +264,19 @@ func (s *server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 func (s *server) generate(
 	w http.ResponseWriter, r *http.Request, in generateRequest,
 ) {
-	prompt, cacheable := in.cachePrompt()
-	if cacheable && !in.RefreshCache {
-		if hit, ok := s.cachedResponse(r.Context(), prompt); ok {
+	ck := s.cacheKeyFor(r.Context(), in)
+	if ck.ok && !in.RefreshCache {
+		if hit, ok := s.cachedResponse(r.Context(), ck); ok {
 			writeJSON(w, http.StatusOK, hit)
 			return
 		}
 	}
 
+	release, ok := s.admit(w, r)
+	if !ok {
+		return
+	}
+	defer release()
 	// r.Context() is cancelled if the client disconnects, which aborts
 	// the in-flight generation on the worker.
 	out, err := s.chat.chat(r.Context(), in.chatRequest())
@@ -284,8 +293,9 @@ func (s *server) generate(
 		Usage:     out.Usage,
 		Timings:   out.Timings,
 	}
-	if cacheable {
-		s.cacheIfComplete(r.Context(), prompt, choice.FinishReason, resp)
+	recordGeneration(out.Usage, out.Timings)
+	if ck.ok {
+		s.cacheIfComplete(r.Context(), ck, choice.FinishReason, resp)
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -293,10 +303,13 @@ func (s *server) generate(
 func (s *server) generateStream(
 	w http.ResponseWriter, r *http.Request, in generateRequest,
 ) {
+	start := time.Now()
 	sse := &sseWriter{w: w, rc: http.NewResponseController(w)}
-	prompt, cacheable := in.cachePrompt()
-	if cacheable && !in.RefreshCache {
-		if hit, ok := s.cachedResponse(r.Context(), prompt); ok {
+	ck := s.cacheKeyFor(r.Context(), in)
+	if ck.ok && !in.RefreshCache {
+		if hit, ok := s.cachedResponse(r.Context(), ck); ok {
+			timeToFirstToken.WithLabelValues("/v1/generate", "cache").
+				Observe(time.Since(start).Seconds())
 			delta := streamDelta{Text: hit.Text, Reasoning: hit.Reasoning}
 			if err := sse.send(delta); err != nil {
 				return
@@ -311,9 +324,18 @@ func (s *server) generateStream(
 		}
 	}
 
+	release, ok := s.admit(w, r)
+	if !ok {
+		return
+	}
+	defer release()
 	var text, reasoning strings.Builder
 	res, err := s.chat.chatStream(r.Context(), in.chatRequest(),
 		func(content, rsn string) error {
+			if !sse.started {
+				timeToFirstToken.WithLabelValues("/v1/generate", "model").
+					Observe(time.Since(start).Seconds())
+			}
 			text.WriteString(content)
 			reasoning.WriteString(rsn)
 			return sse.send(streamDelta{Text: content, Reasoning: rsn})
@@ -328,11 +350,12 @@ func (s *server) generateStream(
 		_ = sse.send(map[string]string{"error": msg})
 		return
 	}
+	recordGeneration(res.Usage, res.Timings)
 	done := streamDone{Done: true, Usage: res.Usage, Timings: res.Timings}
 	if err := sse.send(done); err != nil {
 		log.Printf("generate stream: %v", err)
 	}
-	if !cacheable {
+	if !ck.ok {
 		return
 	}
 
@@ -341,7 +364,7 @@ func (s *server) generateStream(
 	ctx, cancel := context.WithTimeout(
 		context.WithoutCancel(r.Context()), 5*time.Second)
 	defer cancel()
-	s.cacheIfComplete(ctx, prompt, res.FinishReason, generateResponse{
+	s.cacheIfComplete(ctx, ck, res.FinishReason, generateResponse{
 		Text:      text.String(),
 		Reasoning: reasoning.String(),
 		Usage:     res.Usage,
@@ -360,34 +383,95 @@ func workerFailure(err error) (int, string) {
 	return http.StatusBadGateway, "worker request failed"
 }
 
-// cachedResponse returns a cached response for prompt, if any. The cache
+// admit waits for a chat worker slot. If none is granted it writes the
+// error response, unless the client has already gone away.
+func (s *server) admit(
+	w http.ResponseWriter, r *http.Request,
+) (func(), bool) {
+	release, err := s.queue.acquire(r.Context())
+	if err == nil {
+		return release, true
+	}
+	if r.Context().Err() == nil {
+		writeError(w, admissionFailure(w, err), err.Error())
+	}
+	return nil, false
+}
+
+// recordGeneration adds a finished generation to the metrics.
+func recordGeneration(u usage, t *timings) {
+	generatedTokens.WithLabelValues("prompt").Add(float64(u.PromptTokens))
+	generatedTokens.WithLabelValues("completion").
+		Add(float64(u.CompletionTokens))
+	if t != nil && t.PredictedPerSecond > 0 {
+		tokensPerSecond.Observe(t.PredictedPerSecond)
+	}
+}
+
+// responseCacheKey identifies a request's entry in the response cache.
+type responseCacheKey struct {
+	model, prompt string
+	ok            bool
+}
+
+// cacheKeyFor returns the cache key of a request, which is not ok if the
+// request is not cacheable. Entries are kept per model, so the model
+// currently served is looked up on every request; llama-server answers
+// that from memory.
+func (s *server) cacheKeyFor(
+	ctx context.Context, in generateRequest,
+) responseCacheKey {
+	prompt, ok := in.cachePrompt()
+	if !ok {
+		return responseCacheKey{}
+	}
+	model, err := s.chat.model(ctx)
+	if err != nil {
+		log.Printf("cache: %v", err)
+		return responseCacheKey{}
+	}
+	return responseCacheKey{model: model, prompt: prompt, ok: true}
+}
+
+// cachedResponse returns a cached response for the key, if any. The cache
 // is an optimization, so failures are logged and treated as a miss.
 func (s *server) cachedResponse(
-	ctx context.Context, prompt string,
+	ctx context.Context, ck responseCacheKey,
 ) (generateResponse, bool) {
-	hit, score, ok, err := s.cache.lookup(ctx, prompt)
-	if err != nil {
+	start := time.Now()
+	hit, ok, err := s.cache.lookup(ctx, ck.model, ck.prompt)
+	cacheLookupDuration.Observe(time.Since(start).Seconds())
+	switch {
+	case err != nil:
 		log.Printf("cache lookup: %v", err)
-	}
-	if !ok {
+		cacheLookups.WithLabelValues("error").Inc()
 		return generateResponse{}, false
+	case !ok:
+		cacheLookups.WithLabelValues("miss").Inc()
+		return generateResponse{}, false
+	case hit.exact:
+		cacheLookups.WithLabelValues("exact").Inc()
+	default:
+		cacheLookups.WithLabelValues("semantic").Inc()
 	}
-	hit.Cached = true
-	hit.Similarity = score
+	resp := hit.resp
+	resp.Cached = true
+	resp.Similarity = hit.score
 	// The original generation's timings say nothing about this response.
-	hit.Timings = nil
-	return hit, true
+	resp.Timings = nil
+	return resp, true
 }
 
 // cacheIfComplete caches resp unless the generation was cut off, e.g. by
 // max_tokens.
 func (s *server) cacheIfComplete(
-	ctx context.Context, prompt, finishReason string, resp generateResponse,
+	ctx context.Context, ck responseCacheKey, finishReason string,
+	resp generateResponse,
 ) {
 	if finishReason != "stop" {
 		return
 	}
-	if err := s.cache.store(ctx, prompt, resp); err != nil {
+	if err := s.cache.store(ctx, ck.model, ck.prompt, resp); err != nil {
 		log.Printf("cache store: %v", err)
 	}
 }

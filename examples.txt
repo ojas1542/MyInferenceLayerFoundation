@@ -4,11 +4,19 @@ Start the workers and the API first (three terminals):
 
   llama-server -m ~/MyInferenceLayerFoundation/Qwen3.5-9B-Q4_K_M.gguf \
     -ngl 99 --jinja --port 8080 -c 131072 \
-    -fa on -ctk q8_0 -ctv q8_0 -ub 2048 \
+    -fa on -ctk q8_0 -ctv q8_0 -ub 2048 --metrics \
     --temp 1.0 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 1.5
   llama-server -m ~/MyInferenceLayerFoundation/Qwen3-Embedding-0.6B-Q8_0.gguf \
     --embeddings --pooling last -ngl 99 -c 8192 -b 8192 -ub 8192 --port 8081
-  cd ~/MyInferenceLayerFoundation && go run .
+  cd ~/MyInferenceLayerFoundation && docker compose up -d && \
+    REDIS_URL=redis://127.0.0.1:6379 go run .
+
+docker compose starts Redis (the response cache), Prometheus and Grafana
+(dashboard at http://localhost:3001). Without REDIS_URL the cache stays in
+memory. On this Mac, `go build` fails to link ("tapi error: unknown
+architecture arm64e.x1") because Command Line Tools 26.6 ships a macOS 27
+SDK its linker can't read. Until the tools are updated, prefix go commands
+with SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.sdk.
 
 The ports must be explicit: this llama-server build defaults to 9931,
 while the API expects the chat worker on 8080 (LLAMA_URL) and the
@@ -115,3 +123,15 @@ curl localhost:9000/v1/context -d '{"messages": [
 # never cached). This is what the Eve agent uses.
 curl localhost:9000/v1/chat/completions -d '{"model": "qwen3-8b",
   "messages": [{"role": "user", "content": "Hello! /no_think"}]}'
+
+Metrics, cache and queue
+
+  curl -s localhost:9000/metrics | grep '^inference_'
+  # Prometheus: http://localhost:9090, Grafana: http://localhost:3001
+
+  # Cache benchmark against an empty cache:
+  docker compose exec redis redis-cli FLUSHALL
+  go run ./cmd/bench
+
+  # Back-pressure: with MAX_QUEUE=0, a second concurrent generation gets
+  # 429 with Retry-After while the first is still running.

@@ -1,0 +1,14 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  # The Go inference layer: requests, cache, queue, time to first token.
+  - job_name: inferencelayer
+    static_configs:
+      - targets: [host.docker.internal:9000]
+
+  # llama-server, started with --metrics: token throughput for every
+  # generation, including the agent's.
+  - job_name: llama-server
+    static_configs:
+      - targets: [host.docker.internal:8080]
