@@ -11,6 +11,8 @@ interface GoogleGroundingChunk {
 }
 
 interface SearchOutput {
+  // Our own web_search tool (agent/tools/web_search.ts).
+  results?: { url: string; title?: string }[];
   sources?: { url: string; type?: string }[];
   groundingChunks?: GoogleGroundingChunk[];
   groundingMetadata?: { groundingChunks?: GoogleGroundingChunk[] };
@@ -33,6 +35,12 @@ export function getSources(part: ToolPart): Source[] {
   }
 
   const typed = output as SearchOutput;
+
+  if (typed.results) {
+    return typed.results
+      .filter((r) => r.url)
+      .map((r) => ({ url: r.url, title: r.title }));
+  }
 
   if (typed.sources) {
     return typed.sources.filter((s) => s.url).map((s) => ({ url: s.url }));

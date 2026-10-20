@@ -113,6 +113,21 @@ root), which fronts llama.cpp. See [`agent/agent.ts`](../agent/agent.ts).
 
 `INFERENCE_CONTEXT_TOKENS` also sizes the context meter in the chat composer.
 
+## Web search (optional)
+
+eve's built-in `web_search` is run by the model provider, which a local model
+doesn't have, so [`agent/tools/web_search.ts`](../agent/tools/web_search.ts)
+replaces it with [Tavily](https://tavily.com). Without a key the agent can
+still read pages with `web_fetch`, but searches fail.
+
+| Variable | Purpose |
+|----------|---------|
+| `TAVILY_API_KEY` | API key from [app.tavily.com](https://app.tavily.com) (free tier: 1,000 searches a month) |
+
+After editing `.env`, stop `pnpm dev` and start it again. Saving `.env` makes
+Nuxt restart its server on its own, but eve's agent runtime does not come
+back with it, so chats stop getting replies until a full restart.
+
 ## iMessage (optional)
 
 iMessage runs through Photon and the bridge in
