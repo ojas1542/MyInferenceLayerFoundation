@@ -1,0 +1,24 @@
+{
+  "name": "gmail-mcp",
+  "private": true,
+  "description": "Local MCP server that gives the personal agent access to Gmail.",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "auth": "node --env-file=../personal-agent/.env auth.ts",
+    "start": "node --env-file=../personal-agent/.env server.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@googleapis/gmail": "22.0.2",
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "google-auth-library": "11.3.1",
+    "zod": "4.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.1",
+    "typescript": "6.0.3"
+  }
+}

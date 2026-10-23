@@ -17,6 +17,7 @@ flowchart LR
     UI["ui/<br/>Next.js :3000"]
     AG["personal-agent/<br/>Nuxt + Eve :3200"]
     BR["imessage-bridge/<br/>Node :3201"]
+    GM["gmail-mcp/<br/>Node :3202"]
     PH[(Photon)]
     PG[(Postgres :5433)]
   end
@@ -37,6 +38,7 @@ flowchart LR
   B2 --> AG -->|/v1/chat/completions| GO
   P <--> PH <--> BR <-->|inbound / outbox| AG
   AG --- PG
+  AG -->|MCP| GM -->|Gmail API| GML[(Gmail)]
   GO -->|chat, tokenize| LC
   GO -->|embeddings| LE
   GO --- RD
@@ -53,6 +55,7 @@ flowchart LR
 | [`ui/`](ui) | Next.js chat UI for the inference layer | 3000 |
 | [`personal-agent/`](personal-agent) | Personal agent (Eve) with a Nuxt web app | 3200 |
 | [`imessage-bridge/`](imessage-bridge) | Relays iMessages between Photon and the agent | 3201 |
+| [`gmail-mcp/`](gmail-mcp) | MCP server giving the agent access to Gmail | 3202 |
 | llama-server (chat) | Qwen3.5 9B, 128K context | 8080 |
 | llama-server (embeddings) | Qwen3 Embedding 0.6B, used by the cache | 8081 |
 | Postgres | Agent accounts, threads and memory | 5433 |
@@ -164,6 +167,23 @@ and serves a local `/outbox` that the agent posts replies to. Both directions
 are authenticated with `INTERNAL_API_SECRET`, and nothing listens on a public
 address, so no tunnel is needed.
 
+### Gmail MCP server ([`gmail-mcp/`](gmail-mcp))
+
+[`server.ts`](gmail-mcp/server.ts) serves MCP over Streamable HTTP on
+`127.0.0.1:3202`, and the agent reaches it through
+[`agent/connections/gmail.ts`](personal-agent/agent/connections/gmail.ts).
+It calls the Gmail API as the account that `npm run auth` signed in with,
+keeping only the refresh token in `gmail-mcp/.data/`. Requests carry
+`INTERNAL_API_SECRET`, and only signed-in callers get the connection, so an
+iMessage sender without a linked profile cannot read the mailbox.
+
+| Tool | |
+|------|-|
+| `search_threads`, `get_thread`, `list_labels` | Read, with bodies cut short for the local model |
+| `modify_thread_labels`, `create_label` | Archive, star, mark read, label |
+| `create_draft` | Save a new message or a reply in a thread |
+| `send_message`, `send_draft` | Send; each send waits for approval in the web chat |
+
 ## Request flows
 
 **Chat UI.** Browser → `ui` API route → `POST /v1/generate` → cache hit, or
@@ -231,6 +251,18 @@ pnpm (through corepack), Docker, and llama.cpp (`brew install llama.cpp`).
    `IMESSAGE_PROJECT_SECRET` in `personal-agent/.env`, then
    `cd imessage-bridge && npm install && npm start`. Link your phone number
    in the agent's Settings.
+
+7. **Gmail (optional)**: in the Google Cloud console, enable the Gmail API,
+   add yourself as a test user on the OAuth consent screen, and create an
+   OAuth client of type **Desktop app**. Put its id and secret in
+   `personal-agent/.env` as `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`,
+   then:
+
+   ```bash
+   cd gmail-mcp && npm install
+   npm run auth   # one-time Google sign-in
+   npm start
+   ```
 
 ## Observability
 

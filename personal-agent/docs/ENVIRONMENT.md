@@ -140,6 +140,19 @@ iMessage runs through Photon and the bridge in
 | `IMESSAGE_AGENT_URL` | Agent origin the bridge posts to (default `http://localhost:3200`) |
 | `IMESSAGE_BRIDGE_PORT` | Port of the bridge's local outbox (default `3201`) |
 
+## Gmail (optional)
+
+Gmail runs through the MCP server in [`gmail-mcp/`](../../gmail-mcp), which
+reads this same `.env`. The agent reaches it through
+[`agent/connections/gmail.ts`](../agent/connections/gmail.ts).
+
+| Variable | Purpose |
+|----------|---------|
+| `GOOGLE_CLIENT_ID` | OAuth client id of a Desktop app client with the Gmail API enabled |
+| `GOOGLE_CLIENT_SECRET` | That client's secret |
+| `GMAIL_MCP_PORT` | Port the server listens on (default `3202`) |
+| `GMAIL_MCP_URL` | Server URL the agent connects to (default `http://127.0.0.1:3202/mcp`) |
+
 ## Vercel Connect (optional)
 
 Integrations use [Vercel Connect](https://vercel.com/docs/connect) — no extra env vars in this repo for Linear or GitHub OAuth, but you must:
