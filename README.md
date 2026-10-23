@@ -202,6 +202,23 @@ bridge outbox → Photon → iPhone.
 Requirements: macOS on Apple silicon (24 GB is comfortable), Go, Node 24,
 pnpm (through corepack), Docker, and llama.cpp (`brew install llama.cpp`).
 
+### Quick start
+
+```bash
+./install.sh   # Homebrew packages, Docker, models, .env, dependencies
+./run.sh       # starts the agent stack; Ctrl-C stops it
+```
+
+[`install.sh`](install.sh) installs whatever is missing, downloads the models,
+and creates `personal-agent/.env` with fresh secrets. Running it again is
+safe. [`run.sh`](run.sh) starts Postgres, Redis, Prometheus and Grafana in
+Docker, both model workers, the inference layer, and the agent at
+http://localhost:3200. It also starts the Gmail server and the iMessage
+bridge once they are set up (steps 6 and 7). Each service logs to
+`.logs/<service>.log`. If any service exits, the script stops all the others.
+
+### Step by step
+
 1. **Download the models** into the repo root:
 
    ```bash
