@@ -6,6 +6,8 @@ bin/
 node_modules/
 
 # Secrets
+gmail-mcp/.data/
+gcal-mcp/.data/
 .env
 .env.*
 !.env.example
@@ -17,3 +19,6 @@ imsgagent/
 personal-agent/DSC02431.jpg
 
 .DS_Store
+
+# Logs written by run.sh
+.logs/
