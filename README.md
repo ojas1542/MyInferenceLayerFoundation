@@ -259,7 +259,7 @@ bridge once they are set up (steps 6 and 7). Each service logs to
 
    ```bash
    llama-server -m Qwen3.5-9B-Q4_K_M.gguf -ngl 99 --jinja --port 8080 \
-     -c 131072 -fa on -ctk q8_0 -ctv q8_0 -ub 2048 --metrics \
+     -c 131072 -fa on -ctk q8_0 -ctv q8_0 -ub 512 --metrics \
      --temp 1.0 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 1.5
    llama-server -m Qwen3-Embedding-0.6B-Q8_0.gguf --embeddings \
      --pooling last -ngl 99 -c 8192 -b 8192 -ub 8192 --port 8081
@@ -267,6 +267,13 @@ bridge once they are set up (steps 6 and 7). Each service logs to
    ```
 
    Leave out `REDIS_URL` to keep the cache in memory.
+
+   Keep `-ub` small. Qwen3.5 is a hybrid recurrent model, so when a
+   prompt differs from the cached one, llama-server can only resume from a
+   context checkpoint, which it makes one ubatch before the end of each
+   prompt. With `-ub 512` a new agent turn re-reads about 450 tokens
+   instead of 2000, cutting its time to first token by about 7 seconds,
+   with no change in prefill speed.
 
    [`examples.txt`](examples.txt) has sample requests for every endpoint.
 
