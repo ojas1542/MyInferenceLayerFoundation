@@ -87,12 +87,13 @@ else
     "$AGENT/.env.example" > "$AGENT/.env"
   chmod 600 "$AGENT/.env"
   echo "Created .env with new secrets. Optional keys (web search, iMessage,"
-  echo "Gmail) are listed in personal-agent/docs/ENVIRONMENT.md."
+  echo "Gmail, Calendar) are listed in personal-agent/docs/ENVIRONMENT.md."
 fi
 
 step "JavaScript dependencies"
 (cd "$AGENT" && corepack pnpm install --frozen-lockfile)
 (cd "$ROOT/gmail-mcp" && npm ci)
+(cd "$ROOT/gcal-mcp" && npm ci)
 (cd "$ROOT/imessage-bridge" && npm ci)
 
 step "Inference layer"
@@ -103,4 +104,5 @@ step "Done"
 echo "Start everything with ./run.sh"
 if ! grep -q '^GOOGLE_CLIENT_ID=.' "$AGENT/.env"; then
   echo "For Gmail, see step 7 of README.md, then: cd gmail-mcp && npm run auth"
+  echo "For Calendar, see step 8, then: cd gcal-mcp && npm run auth"
 fi

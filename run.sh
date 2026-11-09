@@ -1,8 +1,9 @@
 #!/bin/bash
 # Starts the personal agent stack: Postgres, Redis, Prometheus and Grafana in
-# Docker, both llama-server workers, the inference layer, the Gmail and
-# iMessage services when configured, and the agent itself. Each service logs
-# to .logs/<name>.log. Ctrl-C stops everything. Run ./install.sh first.
+# Docker, both llama-server workers, the inference layer, the Gmail,
+# Calendar and iMessage services when configured, and the agent itself. Each
+# service logs to .logs/<name>.log. Ctrl-C stops everything. Run ./install.sh
+# first.
 set -euo pipefail
 
 # Under Rosetta, Homebrew and llama.cpp would run as x86_64, so re-run
@@ -134,6 +135,15 @@ else
   step "Gmail skipped: not set up (see README step 7)"
 fi
 
+if [ -n "$(env_value GOOGLE_CLIENT_ID)" ] &&
+  [ -f "$ROOT/gcal-mcp/.data/token.json" ]; then
+  step "Google Calendar MCP server"
+  start gcal 3203 npm --prefix "$ROOT/gcal-mcp" start
+  wait_for gcal http://127.0.0.1:3203/mcp 30
+else
+  step "Google Calendar skipped: not set up (see README step 8)"
+fi
+
 if [ -n "$(env_value IMESSAGE_PROJECT_ID)" ]; then
   step "iMessage bridge"
   start imessage 3201 npm --prefix "$ROOT/imessage-bridge" start
@@ -143,7 +153,11 @@ else
 fi
 
 step "Agent"
-start agent 3200 env PORT=3200 corepack pnpm --dir "$AGENT" dev
+# Corepack picks the pnpm version from package.json in the working
+# directory, so start pnpm from the agent's, not from the repo root.
+cd "$AGENT"
+start agent 3200 env PORT=3200 corepack pnpm dev
+cd "$ROOT"
 wait_for agent http://localhost:3200/ 300
 
 cat <<EOF

@@ -153,6 +153,19 @@ reads this same `.env`. The agent reaches it through
 | `GMAIL_MCP_PORT` | Port the server listens on (default `3202`) |
 | `GMAIL_MCP_URL` | Server URL the agent connects to (default `http://127.0.0.1:3202/mcp`) |
 
+## Google Calendar (optional)
+
+Google Calendar runs through the MCP server in
+[`gcal-mcp/`](../../gcal-mcp), which reads this same `.env` and uses the
+Gmail OAuth client (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`) with the
+Google Calendar API enabled. The agent reaches it through
+[`agent/connections/gcal.ts`](../agent/connections/gcal.ts).
+
+| Variable | Purpose |
+|----------|---------|
+| `GCAL_MCP_PORT` | Port the server listens on (default `3203`) |
+| `GCAL_MCP_URL` | Server URL the agent connects to (default `http://127.0.0.1:3203/mcp`) |
+
 ## Vercel Connect (optional)
 
 Integrations use [Vercel Connect](https://vercel.com/docs/connect) — no extra env vars in this repo for Linear or GitHub OAuth, but you must:

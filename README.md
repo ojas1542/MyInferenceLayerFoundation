@@ -18,6 +18,7 @@ flowchart LR
     AG["personal-agent/<br/>Nuxt + Eve :3200"]
     BR["imessage-bridge/<br/>Node :3201"]
     GM["gmail-mcp/<br/>Node :3202"]
+    GC["gcal-mcp/<br/>Node :3203"]
     PH[(Photon)]
     PG[(Postgres :5433)]
   end
@@ -39,6 +40,7 @@ flowchart LR
   P <--> PH <--> BR <-->|inbound / outbox| AG
   AG --- PG
   AG -->|MCP| GM -->|Gmail API| GML[(Gmail)]
+  AG -->|MCP| GC -->|Calendar API| GCL[(Google Calendar)]
   GO -->|chat, tokenize| LC
   GO -->|embeddings| LE
   GO --- RD
@@ -56,6 +58,7 @@ flowchart LR
 | [`personal-agent/`](personal-agent) | Personal agent (Eve) with a Nuxt web app | 3200 |
 | [`imessage-bridge/`](imessage-bridge) | Relays iMessages between Photon and the agent | 3201 |
 | [`gmail-mcp/`](gmail-mcp) | MCP server giving the agent access to Gmail | 3202 |
+| [`gcal-mcp/`](gcal-mcp) | MCP server giving the agent access to Google Calendar | 3203 |
 | llama-server (chat) | Qwen3.5 9B, 128K context | 8080 |
 | llama-server (embeddings) | Qwen3 Embedding 0.6B, used by the cache | 8081 |
 | Postgres | Agent accounts, threads and memory | 5433 |
@@ -184,6 +187,26 @@ iMessage sender without a linked profile cannot read the mailbox.
 | `create_draft` | Save a new message or a reply in a thread |
 | `send_message`, `send_draft` | Send; each send waits for approval in the web chat |
 
+### Google Calendar MCP server ([`gcal-mcp/`](gcal-mcp))
+
+Built like the Gmail server: [`server.ts`](gcal-mcp/server.ts) serves MCP on
+`127.0.0.1:3203`, the agent reaches it through
+[`agent/connections/gcal.ts`](personal-agent/agent/connections/gcal.ts), and
+it calls the Google Calendar API as the account that `npm run auth` signed in
+with, keeping only the refresh token in `gcal-mcp/.data/`. Unless given a
+calendar id, the tools read the user's schedule: calendars they own and ones
+they imported, such as a work account's, but not subscriptions like holidays.
+New events go on the primary calendar, and only calendars the user can edit
+accept changes.
+
+| Tool | |
+|------|-|
+| `list_calendars` | Calendars with their ids and time zones |
+| `list_events` | Events in a time range, optionally matching a search |
+| `get_event` | One event with attendees and description, cut short for the local model |
+| `find_free_time` | Free slots across one or more calendars |
+| `create_event`, `update_event`, `delete_event`, `respond_to_event` | Change the calendar; each change waits for approval in the web chat, and invitees get an email |
+
 ## Request flows
 
 **Chat UI.** Browser → `ui` API route → `POST /v1/generate` → cache hit, or
@@ -277,6 +300,15 @@ bridge once they are set up (steps 6 and 7). Each service logs to
 
    ```bash
    cd gmail-mcp && npm install
+   npm run auth   # one-time Google sign-in
+   npm start
+   ```
+
+8. **Google Calendar (optional)**: in the same Google Cloud project, enable
+   the Google Calendar API. It reuses the Gmail OAuth client, then:
+
+   ```bash
+   cd gcal-mcp && npm install
    npm run auth   # one-time Google sign-in
    npm start
    ```

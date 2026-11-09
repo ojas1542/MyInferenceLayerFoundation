@@ -20,6 +20,25 @@ const color = computed(() => {
   );
 });
 
+// Results saved before the tool reported units were always metric.
+const units = computed(() => props.invocation.output?.units ?? {
+  temperature: "°C",
+  windSpeed: "km/h",
+  snowfall: "cm",
+});
+
+const hasPrecipitation = computed(() =>
+  props.invocation.output?.dailyForecast.some(
+    day => day.precipitationChance !== undefined,
+  ),
+);
+
+const hasSnow = computed(() =>
+  props.invocation.output?.dailyForecast.some(
+    day => (day.snowfall ?? 0) > 0,
+  ),
+);
+
 // ISO dates ("2026-10-19") read better as short weekdays and fit five
 // columns on narrow screens. UTC keeps server and client renders equal.
 function dayLabel(day: string) {
@@ -50,7 +69,9 @@ const message = computed(() => {
       <div class="mb-3 flex items-start justify-between">
         <div class="flex items-baseline">
           <span class="text-4xl font-bold">{{ invocation.output.temperature }}°</span>
-          <span class="text-base text-ink/70">C</span>
+          <span class="text-base text-ink/70">
+            {{ units.temperature.replace("°", "") }}
+          </span>
         </div>
         <div class="text-right">
           <div class="mb-1 text-base font-medium">
@@ -86,7 +107,7 @@ const message = computed(() => {
               name="i-lucide-wind"
               class="size-3 text-ink/60"
             />
-            <span>{{ invocation.output.windSpeed }} km/h</span>
+            <span>{{ invocation.output.windSpeed }} {{ units.windSpeed }}</span>
           </div>
         </div>
       </div>
@@ -115,6 +136,28 @@ const message = computed(() => {
             <div class="text-ink/60">
               {{ forecast.low }}°
             </div>
+          </div>
+          <div
+            v-if="hasPrecipitation"
+            class="flex items-center gap-0.5 text-[10px] text-ink/60"
+            title="Chance of precipitation"
+          >
+            <UIcon
+              name="i-lucide-umbrella"
+              class="size-2.5"
+            />
+            <span>{{ forecast.precipitationChance ?? 0 }}%</span>
+          </div>
+          <div
+            v-if="hasSnow"
+            class="flex items-center gap-0.5 text-[10px] text-ink/60"
+            title="Snowfall"
+          >
+            <UIcon
+              name="i-lucide-snowflake"
+              class="size-2.5"
+            />
+            <span>{{ forecast.snowfall ?? 0 }} {{ units.snowfall }}</span>
           </div>
         </div>
       </div>
