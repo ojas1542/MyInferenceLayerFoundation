@@ -30,6 +30,9 @@ type config struct {
 	maxConcurrent int
 	maxQueue      int
 	queueTimeout  time.Duration
+	// warmupFile holds the request that warms the chat worker's prompt
+	// cache at startup; empty disables warming.
+	warmupFile string
 }
 
 func loadConfig() (config, error) {
@@ -64,6 +67,16 @@ func loadConfig() (config, error) {
 	cfg.queueTimeout, err = time.ParseDuration(envOr("QUEUE_TIMEOUT", "60s"))
 	if err != nil || cfg.queueTimeout <= 0 {
 		return cfg, fmt.Errorf("QUEUE_TIMEOUT must be a positive duration")
+	}
+	cfg.warmupFile = os.Getenv("WARMUP_FILE")
+	switch cfg.warmupFile {
+	case "off":
+		cfg.warmupFile = ""
+	case "":
+		cfg.warmupFile, err = defaultWarmupPath()
+		if err != nil {
+			return cfg, fmt.Errorf("WARMUP_FILE: %w", err)
+		}
 	}
 	return cfg, nil
 }
@@ -102,7 +115,11 @@ func main() {
 	}
 	defer cache.close()
 	queue := newAdmission(cfg.maxConcurrent, cfg.maxQueue, cfg.queueTimeout)
-	openai, err := newOpenAIProxy(cfg.llamaURL, queue)
+	var warmer *prefixWarmer
+	if cfg.warmupFile != "" {
+		warmer = newPrefixWarmer(cfg.warmupFile)
+	}
+	openai, err := newOpenAIProxy(cfg.llamaURL, queue, warmer)
 	if err != nil {
 		log.Fatalf("LLAMA_URL: %v", err)
 	}
@@ -132,6 +149,14 @@ func main() {
 			log.Fatalf("listen: %v", err)
 		}
 	}()
+
+	if warmer != nil {
+		go func() {
+			if err := warmer.warm(ctx, client, cfg.llamaURL); err != nil {
+				log.Printf("warmup: %v", err)
+			}
+		}()
+	}
 
 	<-ctx.Done()
 	shutdownCtx, cancel := context.WithTimeout(

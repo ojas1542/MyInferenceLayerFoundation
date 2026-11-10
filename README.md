@@ -102,6 +102,27 @@ The cache has two backends:
 The OpenAI-compatible routes ([`openai.go`](openai.go)) deliberately skip the
 cache: agent turns depend on tool results and must never be replayed.
 
+**Prompt cache warm-up** ([`warmup.go`](warmup.go)). Every agent request
+starts with the same tools and system prompt, about 7000 tokens that take
+the chat worker 20-30 seconds to read when nothing is cached, as after a
+restart. The layer saves the latest tools and system prompt it has seen
+to `WARMUP_FILE` and sends them to the chat worker when it starts, so the
+first message after a restart reads only its own few dozen tokens, in
+under a second.
+The file holds the agent's system prompt, so it lives in the user's cache
+directory and only the user can read it.
+
+**Stable tool order** ([`toolorder.go`](toolorder.go)). When the agent
+finds Gmail or Calendar tools with `connection_search`, Eve adds them in
+the middle of its tool list. The chat template puts tools before the
+system prompt, and the model can only resume a changed prompt from a
+checkpoint before the change, so the next step used to re-read the whole
+prompt (about 11,500 tokens, 56 seconds). The layer moves connection tools
+(named `<connection>__<tool>`) to the end of the list, and the warm-up
+first caches the prompt up to the end of the agent's own tools. That step
+now re-reads about 6,000 tokens (30 seconds), and the next new session
+about 2,900 instead of 8,400.
+
 **Admission control** ([`admission.go`](admission.go)). A single GPU can only
 run so many generations at once, and llama-server queues the rest without
 limit. The layer puts a bounded queue in front of it instead:
@@ -131,6 +152,7 @@ limit. The layer puts a bounded queue in front of it instead:
 | `MAX_CONCURRENT` | `4` | Generations running at once |
 | `MAX_QUEUE` | `16` | Requests allowed to wait for a slot |
 | `QUEUE_TIMEOUT` | `60s` | Longest wait for a slot |
+| `WARMUP_FILE` | `~/Library/Caches/inferencelayer/warmup.json` | Saved prompt prefix for the startup warm-up; `off` disables it |
 
 ### Chat UI ([`ui/`](ui))
 
@@ -259,7 +281,8 @@ bridge once they are set up (steps 6 and 7). Each service logs to
 
    ```bash
    llama-server -m Qwen3.5-9B-Q4_K_M.gguf -ngl 99 --jinja --port 8080 \
-     -c 131072 -fa on -ctk q8_0 -ctv q8_0 -ub 2048 --metrics \
+     --chat-template-file qwen3.5-chat-template.jinja \
+     -c 131072 -fa on -ctk q8_0 -ctv q8_0 -ub 512 --metrics \
      --temp 1.0 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 1.5
    llama-server -m Qwen3-Embedding-0.6B-Q8_0.gguf --embeddings \
      --pooling last -ngl 99 -c 8192 -b 8192 -ub 8192 --port 8081
@@ -267,6 +290,23 @@ bridge once they are set up (steps 6 and 7). Each service logs to
    ```
 
    Leave out `REDIS_URL` to keep the cache in memory.
+
+   Keep `-ub` small. Qwen3.5 is a hybrid recurrent model, so when a
+   prompt differs from the cached one, llama-server can only resume from a
+   context checkpoint, which it makes one ubatch before the end of each
+   prompt. With `-ub 512` a new agent turn re-reads about 450 tokens
+   instead of 2000, cutting its time to first token by about 7 seconds,
+   with no change in prefill speed.
+
+   [`qwen3.5-chat-template.jinja`](qwen3.5-chat-template.jinja) is the
+   model's own template, except that it keeps the reasoning of every
+   assistant message. The stock template drops earlier reasoning as soon
+   as a new user message arrives, so the previous turn renders differently
+   and llama-server re-reads all of it: about 870 tokens (4.5s) for a turn
+   with one weather lookup, and far more after a web fetch. With the
+   template a new turn prefills only the new messages, about 50 tokens
+   (0.4s). The cost is that past reasoning stays in the context, roughly
+   100-300 tokens per model call.
 
    [`examples.txt`](examples.txt) has sample requests for every endpoint.
 

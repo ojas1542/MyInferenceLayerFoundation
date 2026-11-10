@@ -1,22 +1,28 @@
 package main
 
 import (
+	"bytes"
+	"io"
 	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
 
 // newOpenAIProxy serves the OpenAI-compatible API (chat completions and
-// model listing) by forwarding requests to the chat worker unchanged.
+// model listing) by forwarding requests to the chat worker.
 // This lets OpenAI SDK clients, such as agent frameworks, use the layer
 // with streaming and tool calling intact. These requests deliberately
 // skip the semantic cache: agent turns depend on tool results and must
 // never be answered from a cache. Completions wait their turn in queue.
+// Connection tools are moved to the end of each request's tool list (see
+// connectionToolsLast). If warmer is not nil, it sees every completion
+// request.
 func newOpenAIProxy(
-	workerURL string, queue *admission,
+	workerURL string, queue *admission, warmer *prefixWarmer,
 ) (http.Handler, error) {
 	target, err := url.Parse(workerURL)
 	if err != nil {
@@ -39,6 +45,23 @@ func newOpenAIProxy(
 			return
 		}
 		start := time.Now()
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			writeOpenAIError(w, http.StatusRequestEntityTooLarge,
+				"request body too large", "invalid_request_error")
+			return
+		}
+		if b, moved := connectionToolsLast(body); moved {
+			body = b
+			r.ContentLength = int64(len(body))
+			r.Header.Set("Content-Length", strconv.Itoa(len(body)))
+		}
+		r.Body = io.NopCloser(bytes.NewReader(body))
+		if warmer != nil {
+			if err := warmer.remember(body); err != nil {
+				log.Printf("warmup: save: %v", err)
+			}
+		}
 		release, err := queue.acquire(r.Context())
 		if err != nil {
 			if r.Context().Err() == nil {

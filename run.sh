@@ -111,8 +111,15 @@ step "Model workers"
 # The chat window must match what the agent believes it has.
 CONTEXT="$(env_value INFERENCE_CONTEXT_TOKENS)"
 CONTEXT="${CONTEXT:-32768}"
+# Qwen3.5 is a hybrid recurrent model, so a changed prompt can only resume
+# from a context checkpoint, and llama-server makes one a ubatch before
+# each prompt's end. A small ubatch keeps that checkpoint close: a new
+# agent turn re-reads about 450 tokens instead of 2000, at the same
+# prefill speed. The chat template keeps earlier reasoning in the history,
+# so a new turn extends the cached prompt instead of rewriting the last one.
 start chat 8080 llama-server -m "$ROOT/Qwen3.5-9B-Q4_K_M.gguf" -ngl 99 \
-  --jinja --port 8080 -c "$CONTEXT" -fa on -ctk q8_0 -ctv q8_0 -ub 2048 \
+  --jinja --chat-template-file "$ROOT/qwen3.5-chat-template.jinja" \
+  --port 8080 -c "$CONTEXT" -fa on -ctk q8_0 -ctv q8_0 -ub 512 \
   --metrics --temp 1.0 --top-p 0.95 --top-k 20 --min-p 0 \
   --presence-penalty 1.5
 start embed 8081 llama-server -m "$ROOT/Qwen3-Embedding-0.6B-Q8_0.gguf" \
@@ -121,7 +128,9 @@ wait_for chat http://127.0.0.1:8080/health 300
 wait_for embed http://127.0.0.1:8081/health 120
 
 step "Inference layer"
-(cd "$ROOT" && go build -o bin/inferencelayer .)
+# Pure Go: the layer needs no C, and cgo breaks when the Command Line
+# Tools SDK is newer than the Go linker understands.
+(cd "$ROOT" && CGO_ENABLED=0 go build -o bin/inferencelayer .)
 start inference 9000 \
   env REDIS_URL=redis://127.0.0.1:6379 "$ROOT/bin/inferencelayer"
 wait_for inference http://127.0.0.1:9000/healthz 30
