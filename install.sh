@@ -97,7 +97,9 @@ step "JavaScript dependencies"
 (cd "$ROOT/imessage-bridge" && npm ci)
 
 step "Inference layer"
-(cd "$ROOT" && go build -o bin/inferencelayer .)
+# Pure Go: the layer needs no C, and cgo breaks when the Command Line
+# Tools SDK is newer than the Go linker understands.
+(cd "$ROOT" && CGO_ENABLED=0 go build -o bin/inferencelayer .)
 echo "Built bin/inferencelayer"
 
 step "Done"

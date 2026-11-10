@@ -102,6 +102,16 @@ The cache has two backends:
 The OpenAI-compatible routes ([`openai.go`](openai.go)) deliberately skip the
 cache: agent turns depend on tool results and must never be replayed.
 
+**Prompt cache warm-up** ([`warmup.go`](warmup.go)). Every agent request
+starts with the same tools and system prompt, about 7000 tokens that take
+the chat worker 20-30 seconds to read when nothing is cached, as after a
+restart. The layer saves the latest tools and system prompt it has seen
+to `WARMUP_FILE` and sends them to the chat worker when it starts, so the
+first message after a restart reads only its own few dozen tokens, in
+under a second.
+The file holds the agent's system prompt, so it lives in the user's cache
+directory and only the user can read it.
+
 **Admission control** ([`admission.go`](admission.go)). A single GPU can only
 run so many generations at once, and llama-server queues the rest without
 limit. The layer puts a bounded queue in front of it instead:
@@ -131,6 +141,7 @@ limit. The layer puts a bounded queue in front of it instead:
 | `MAX_CONCURRENT` | `4` | Generations running at once |
 | `MAX_QUEUE` | `16` | Requests allowed to wait for a slot |
 | `QUEUE_TIMEOUT` | `60s` | Longest wait for a slot |
+| `WARMUP_FILE` | `~/Library/Caches/inferencelayer/warmup.json` | Saved prompt prefix for the startup warm-up; `off` disables it |
 
 ### Chat UI ([`ui/`](ui))
 

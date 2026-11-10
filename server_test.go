@@ -39,6 +39,8 @@ var embeddingsByText = map[string][]float64{
 type fakeLlama struct {
 	model atomic.Value // string
 	chats atomic.Int32
+	// lastChat is the body of the latest chat completion request.
+	lastChat atomic.Value // []byte
 	// gate, if set, holds every chat completion until it is closed.
 	gate chan struct{}
 }
@@ -78,8 +80,10 @@ func (f *fakeLlama) serve(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+		body, _ := io.ReadAll(r.Body)
+		f.lastChat.Store(body)
 		var in chatRequest
-		_ = json.NewDecoder(r.Body).Decode(&in)
+		_ = json.Unmarshal(body, &in)
 		answer := "answer to " + in.Messages[len(in.Messages)-1].Content
 		if in.Stream {
 			w.Header().Set("Content-Type", "text/event-stream")
@@ -96,7 +100,9 @@ func (f *fakeLlama) serve(w http.ResponseWriter, r *http.Request) {
 				"message":       map[string]string{"content": answer},
 				"finish_reason": "stop",
 			}},
-			"usage":   map[string]int{"prompt_tokens": 5, "completion_tokens": 3},
+			"usage": map[string]int{
+				"prompt_tokens": 5, "completion_tokens": 3,
+			},
 			"timings": map[string]float64{"predicted_per_second": 20},
 		})
 	default:
@@ -110,7 +116,7 @@ func newTestServer(
 ) *httptest.Server {
 	t.Helper()
 	wk := &worker{baseURL: llama.URL, client: llama.Client()}
-	openai, err := newOpenAIProxy(llama.URL, queue)
+	openai, err := newOpenAIProxy(llama.URL, queue, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"io"
 	"log"
 	"net/http"
 	"net/http/httputil"
@@ -15,8 +17,9 @@ import (
 // with streaming and tool calling intact. These requests deliberately
 // skip the semantic cache: agent turns depend on tool results and must
 // never be answered from a cache. Completions wait their turn in queue.
+// If warmer is not nil, it sees every completion request.
 func newOpenAIProxy(
-	workerURL string, queue *admission,
+	workerURL string, queue *admission, warmer *prefixWarmer,
 ) (http.Handler, error) {
 	target, err := url.Parse(workerURL)
 	if err != nil {
@@ -39,6 +42,18 @@ func newOpenAIProxy(
 			return
 		}
 		start := time.Now()
+		if warmer != nil {
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				writeOpenAIError(w, http.StatusRequestEntityTooLarge,
+					"request body too large", "invalid_request_error")
+				return
+			}
+			r.Body = io.NopCloser(bytes.NewReader(body))
+			if err := warmer.remember(body); err != nil {
+				log.Printf("warmup: save: %v", err)
+			}
+		}
 		release, err := queue.acquire(r.Context())
 		if err != nil {
 			if r.Context().Err() == nil {

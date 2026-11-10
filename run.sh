@@ -126,7 +126,9 @@ wait_for chat http://127.0.0.1:8080/health 300
 wait_for embed http://127.0.0.1:8081/health 120
 
 step "Inference layer"
-(cd "$ROOT" && go build -o bin/inferencelayer .)
+# Pure Go: the layer needs no C, and cgo breaks when the Command Line
+# Tools SDK is newer than the Go linker understands.
+(cd "$ROOT" && CGO_ENABLED=0 go build -o bin/inferencelayer .)
 start inference 9000 \
   env REDIS_URL=redis://127.0.0.1:6379 "$ROOT/bin/inferencelayer"
 wait_for inference http://127.0.0.1:9000/healthz 30
