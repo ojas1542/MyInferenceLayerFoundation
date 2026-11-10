@@ -12,10 +12,61 @@ import (
 	"time"
 )
 
-var agentTools = []map[string]any{{
-	"type":     "function",
-	"function": map[string]any{"name": "weather"},
-}}
+func tool(name string) map[string]any {
+	return map[string]any{
+		"type":     "function",
+		"function": map[string]any{"name": name},
+	}
+}
+
+// agentTools is the agent's tool list once the model has found a Gmail
+// tool: eve puts it in the middle.
+var agentTools = []map[string]any{
+	tool("weather"), tool("gmail__search_threads"), tool("web_search"),
+}
+
+func toolNames(t *testing.T, body []byte) []string {
+	t.Helper()
+	var in struct {
+		Tools []struct {
+			Function struct {
+				Name string `json:"name"`
+			} `json:"function"`
+		} `json:"tools"`
+	}
+	if err := json.Unmarshal(body, &in); err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, tool := range in.Tools {
+		names = append(names, tool.Function.Name)
+	}
+	return names
+}
+
+func TestConnectionToolsLast(t *testing.T) {
+	body, _ := json.Marshal(agentRequest(question))
+	got, moved := connectionToolsLast(body)
+	want := "weather web_search gmail__search_threads"
+	if names := strings.Join(toolNames(t, got), " "); !moved ||
+		names != want {
+		t.Fatalf("tools %q (moved %v), want %q", names, moved, want)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(got, &out); err != nil ||
+		out["stream"] != true || out["tool_choice"] != "auto" ||
+		len(out["messages"].([]any)) != 3 {
+		t.Fatalf("other fields changed: %s", got)
+	}
+
+	// Already in order, or no tools at all: the body is left alone.
+	for _, body := range [][]byte{got, []byte(`{"messages":[]}`)} {
+		if same, moved := connectionToolsLast(body); moved ||
+			string(same) != string(body) {
+			t.Fatalf("rewrote %s to %s", body, same)
+		}
+	}
+}
 
 func agentRequest(question string) map[string]any {
 	return map[string]any{
@@ -53,9 +104,11 @@ func TestWarmupRequest(t *testing.T) {
 		out.Messages[1] != want[1] {
 		t.Fatalf("messages = %+v, want %+v", out.Messages, want)
 	}
-	if len(out.Tools) != 1 || out.MaxTokens != 1 || out.Stream {
-		t.Fatalf("tools %v, max_tokens %d, stream %v",
-			out.Tools, out.MaxTokens, out.Stream)
+	// Connection tools come and go per session, so they stay out.
+	names := strings.Join(toolNames(t, got), " ")
+	if names != "weather web_search" || out.MaxTokens != 1 || out.Stream {
+		t.Fatalf("tools %q, max_tokens %d, stream %v",
+			names, out.MaxTokens, out.Stream)
 	}
 
 	noSystem, _ := json.Marshal(map[string]any{
@@ -80,7 +133,7 @@ func TestPrefixWarmup(t *testing.T) {
 	srv := httptest.NewServer(instrument(s.routes()))
 	t.Cleanup(srv.Close)
 
-	// The request still reaches the worker intact.
+	// The request reaches the worker with connection tools last.
 	resp := postJSON(t, srv.URL+"/v1/chat/completions",
 		agentRequest(question))
 	answer, _ := io.ReadAll(resp.Body)
@@ -88,6 +141,11 @@ func TestPrefixWarmup(t *testing.T) {
 		!strings.Contains(string(answer), "answer to "+question) {
 		t.Fatalf("completion: status %d, chats %d, body %s",
 			resp.StatusCode, llama.chats.Load(), answer)
+	}
+	sent := llama.lastChat.Load().([]byte)
+	want := "weather web_search gmail__search_threads"
+	if names := strings.Join(toolNames(t, sent), " "); names != want {
+		t.Fatalf("worker got tools %q, want %q", names, want)
 	}
 	saved, err := os.ReadFile(path)
 	if err != nil {
@@ -114,6 +172,10 @@ func TestPrefixWarmup(t *testing.T) {
 	}
 	if got := llama.lastChat.Load(); string(got.([]byte)) != string(saved) {
 		t.Fatalf("warm-up sent %s, want %s", got, saved)
+	}
+	// It first reads the prompt up to the end of the tool list.
+	if got := llama.lastPrompt.Load(); got != "<tools>\nweather\nweb_search" {
+		t.Fatalf("tools warm-up prompt %q", got)
 	}
 
 	// Nothing is sent before any request has been saved.

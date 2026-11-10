@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -22,10 +23,15 @@ import (
 // thousand tokens that take llama-server tens of seconds to read. The
 // model is hybrid recurrent, so it can only reuse a cached prompt from a
 // context checkpoint, and the server makes one where each request's last
-// message starts. The warmer saves a request holding just the latest tools
-// and system prompt plus a one-character user message, and replays it when
-// the layer starts. That leaves a checkpoint right after the system prompt,
-// so the first real request after a restart only reads its own messages.
+// message starts. The warmer saves a request holding just the agent's own
+// tools and latest system prompt plus a one-character user message, and
+// replays it when the layer starts. That leaves a checkpoint right after
+// the system prompt, so the first real request after a restart only reads
+// its own messages.
+//
+// The chat template renders tools first, so the replay starts with just
+// the tool list. Its checkpoint lets a request that adds connection tools,
+// which the proxy puts last, skip re-reading the agent's own tools.
 type prefixWarmer struct {
 	path string
 
@@ -50,12 +56,13 @@ func defaultWarmupPath() (string, error) {
 }
 
 // warmupRequest builds the warm-up request for a chat completions body:
-// its tools and leading system messages, then a one-character user
-// message. It reports false when the body has no system message.
+// its tools other than connection tools and its leading system messages,
+// then a one-character user message. It reports false when the body has
+// no system message.
 func warmupRequest(body []byte) ([]byte, bool) {
 	var in struct {
 		Messages []json.RawMessage `json:"messages"`
-		Tools    json.RawMessage   `json:"tools"`
+		Tools    []json.RawMessage `json:"tools"`
 		// Template options can change how the prefix renders.
 		ChatTemplateKwargs json.RawMessage `json:"chat_template_kwargs"`
 	}
@@ -80,8 +87,14 @@ func warmupRequest(body []byte) ([]byte, bool) {
 		"messages":   append(messages, chatMessage{Role: "user", Content: "."}),
 		"max_tokens": 1,
 	}
-	if isJSONValue(in.Tools) {
-		out["tools"] = in.Tools
+	var tools []json.RawMessage
+	for _, tool := range in.Tools {
+		if !isConnectionTool(tool) {
+			tools = append(tools, tool)
+		}
+	}
+	if len(tools) > 0 {
+		out["tools"] = tools
 	}
 	if isJSONValue(in.ChatTemplateKwargs) {
 		out["chat_template_kwargs"] = in.ChatTemplateKwargs
@@ -137,8 +150,9 @@ func writeFileAtomic(path string, data []byte) error {
 	return os.Rename(tmp.Name(), path)
 }
 
-// warm sends the saved warm-up request to the chat worker at workerURL.
-// It does nothing when no request has been saved yet.
+// warm sends the saved warm-up request to the chat worker at workerURL,
+// after caching the part of its prompt that ends with the tool list. It
+// does nothing when no request has been saved yet.
 func (p *prefixWarmer) warm(
 	ctx context.Context, client *http.Client, workerURL string,
 ) error {
@@ -149,29 +163,86 @@ func (p *prefixWarmer) warm(
 	if err != nil {
 		return err
 	}
+	if err := warmTools(ctx, client, workerURL, req); err != nil {
+		// The full warm-up below still helps.
+		log.Printf("warmup: tools: %v", err)
+	}
 	start := time.Now()
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		workerURL+"/v1/chat/completions", bytes.NewReader(req))
+	var out struct {
+		Usage usage `json:"usage"`
+	}
+	err = postWorker(ctx, client, workerURL+"/v1/chat/completions", req, &out)
 	if err != nil {
 		return err
 	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	resp, err := client.Do(httpReq)
+	log.Printf("warmup: cached %d prompt tokens in %s",
+		out.Usage.PromptTokens, time.Since(start).Round(time.Millisecond))
+	return nil
+}
+
+// toolsEnd marks the end of the tool list in the chat template.
+const toolsEnd = "\n</tools>"
+
+// warmTools has the chat worker read the prompt of chat request req up
+// to the end of its tool list, which leaves a context checkpoint there.
+// It does nothing when the template renders no tool list.
+func warmTools(
+	ctx context.Context, client *http.Client, workerURL string, req []byte,
+) error {
+	start := time.Now()
+	var tmpl struct {
+		Prompt string `json:"prompt"`
+	}
+	err := postWorker(ctx, client, workerURL+"/apply-template", req, &tmpl)
+	if err != nil {
+		return err
+	}
+	end := strings.LastIndex(tmpl.Prompt, toolsEnd)
+	if end < 0 {
+		return nil
+	}
+	body, err := json.Marshal(map[string]any{
+		"prompt":       tmpl.Prompt[:end],
+		"n_predict":    0,
+		"cache_prompt": true,
+	})
+	if err != nil {
+		return err
+	}
+	var out struct {
+		Timings struct {
+			PromptN int `json:"prompt_n"`
+		} `json:"timings"`
+	}
+	err = postWorker(ctx, client, workerURL+"/completion", body, &out)
+	if err != nil {
+		return err
+	}
+	log.Printf("warmup: cached %d tool tokens in %s", out.Timings.PromptN,
+		time.Since(start).Round(time.Millisecond))
+	return nil
+}
+
+// postWorker posts a JSON body to the chat worker and decodes the JSON
+// answer into out.
+func postWorker(
+	ctx context.Context, client *http.Client, url string, body []byte,
+	out any,
+) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url,
+		bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return fmt.Errorf("status %d: %s", resp.StatusCode, msg)
+		return fmt.Errorf("%s: status %d: %s", url, resp.StatusCode, msg)
 	}
-	var out struct {
-		Usage usage `json:"usage"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return err
-	}
-	log.Printf("warmup: cached %d prompt tokens in %s",
-		out.Usage.PromptTokens, time.Since(start).Round(time.Millisecond))
-	return nil
+	return json.NewDecoder(resp.Body).Decode(out)
 }

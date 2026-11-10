@@ -112,6 +112,17 @@ under a second.
 The file holds the agent's system prompt, so it lives in the user's cache
 directory and only the user can read it.
 
+**Stable tool order** ([`toolorder.go`](toolorder.go)). When the agent
+finds Gmail or Calendar tools with `connection_search`, Eve adds them in
+the middle of its tool list. The chat template puts tools before the
+system prompt, and the model can only resume a changed prompt from a
+checkpoint before the change, so the next step used to re-read the whole
+prompt (about 11,500 tokens, 56 seconds). The layer moves connection tools
+(named `<connection>__<tool>`) to the end of the list, and the warm-up
+first caches the prompt up to the end of the agent's own tools. That step
+now re-reads about 6,000 tokens (30 seconds), and the next new session
+about 2,900 instead of 8,400.
+
 **Admission control** ([`admission.go`](admission.go)). A single GPU can only
 run so many generations at once, and llama-server queues the rest without
 limit. The layer puts a bounded queue in front of it instead:
