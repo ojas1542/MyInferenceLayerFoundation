@@ -281,6 +281,7 @@ bridge once they are set up (steps 6 and 7). Each service logs to
 
    ```bash
    llama-server -m Qwen3.5-9B-Q4_K_M.gguf -ngl 99 --jinja --port 8080 \
+     --chat-template-file qwen3.5-chat-template.jinja \
      -c 131072 -fa on -ctk q8_0 -ctv q8_0 -ub 512 --metrics \
      --temp 1.0 --top-p 0.95 --top-k 20 --min-p 0 --presence-penalty 1.5
    llama-server -m Qwen3-Embedding-0.6B-Q8_0.gguf --embeddings \
@@ -296,6 +297,16 @@ bridge once they are set up (steps 6 and 7). Each service logs to
    prompt. With `-ub 512` a new agent turn re-reads about 450 tokens
    instead of 2000, cutting its time to first token by about 7 seconds,
    with no change in prefill speed.
+
+   [`qwen3.5-chat-template.jinja`](qwen3.5-chat-template.jinja) is the
+   model's own template, except that it keeps the reasoning of every
+   assistant message. The stock template drops earlier reasoning as soon
+   as a new user message arrives, so the previous turn renders differently
+   and llama-server re-reads all of it: about 870 tokens (4.5s) for a turn
+   with one weather lookup, and far more after a web fetch. With the
+   template a new turn prefills only the new messages, about 50 tokens
+   (0.4s). The cost is that past reasoning stays in the context, roughly
+   100-300 tokens per model call.
 
    [`examples.txt`](examples.txt) has sample requests for every endpoint.
 

@@ -115,9 +115,11 @@ CONTEXT="${CONTEXT:-32768}"
 # from a context checkpoint, and llama-server makes one a ubatch before
 # each prompt's end. A small ubatch keeps that checkpoint close: a new
 # agent turn re-reads about 450 tokens instead of 2000, at the same
-# prefill speed.
+# prefill speed. The chat template keeps earlier reasoning in the history,
+# so a new turn extends the cached prompt instead of rewriting the last one.
 start chat 8080 llama-server -m "$ROOT/Qwen3.5-9B-Q4_K_M.gguf" -ngl 99 \
-  --jinja --port 8080 -c "$CONTEXT" -fa on -ctk q8_0 -ctv q8_0 -ub 512 \
+  --jinja --chat-template-file "$ROOT/qwen3.5-chat-template.jinja" \
+  --port 8080 -c "$CONTEXT" -fa on -ctk q8_0 -ctv q8_0 -ub 512 \
   --metrics --temp 1.0 --top-p 0.95 --top-k 20 --min-p 0 \
   --presence-penalty 1.5
 start embed 8081 llama-server -m "$ROOT/Qwen3-Embedding-0.6B-Q8_0.gguf" \
